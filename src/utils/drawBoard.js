@@ -1,168 +1,313 @@
 import sharp from 'sharp';
 import path from 'node:path';
 
-const squareSize = 64;
+const squareSize = 32;
 const boardSize = squareSize * 8;
-const borderSize = 40;
+
+const coordSize = 20;
+const playerAreaHeight = 24;
+const playerPadding = 10;
+const evalBarWidth = 56;
 const pieceScale = 0.85;
+const files = 'abcdefgh';
+const ranks = '87654321';
 
 const defaultLightColor = { r: 230, g: 230, b: 230, alpha: 1 };
 const defaultDarkColor = { r: 112, g: 112, b: 112, alpha: 1 };
 const defaultBorderColor = { r: 30, g: 30, b: 30, alpha: 1 };
-const defaultCheckColor = { r: 255, g: 0, b: 0, alpha: 0.5 };
-const watermarkText = process.env.BOT_NAME || 'echolyn';
+const defaultCheckColor = { r: 255, g: 0, b: 0, alpha: 0.45 };
+const watermarkTextDefault = process.env.BOT_NAME || 'echolyn';
 
-const pieceMap = { p: 'P', n: 'N', b: 'B', r: 'R', q: 'Q', k: 'K' };
-const files = 'abcdefgh';
-const ranks = '87654321';
+function svgTextBuffer(text, width, height, opts = {}) {
+	const {
+		fontSize = Math.round(Math.min(width, height) * 0.4),
+		fill = '#aaaaaa',
+		anchor = 'middle',
+		fontFamily = 'Arial, Helvetica, sans-serif',
+	} = opts;
 
-async function createTextOverlay(text, width, height, fontSize = 24) {
-  const svg = `
-    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-      <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
-            fill="#ffffff" font-size="${fontSize}px" font-family="04b03">
-        ${text}
-      </text>
-    </svg>
-  `;
-  return await sharp(Buffer.from(svg)).png().toBuffer();
+	const x = anchor === 'start' ? 6 : anchor === 'end' ? width - 6 : width / 2;
+	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+    <style>
+      .t{ fill:${fill}; font-family: ${fontFamily}; font-size:${fontSize}px; }
+    </style>
+    <text x="${x}" y="50%" dominant-baseline="middle" text-anchor="${anchor}" class="t">${text}</text>
+  </svg>`;
+	return Buffer.from(svg);
 }
 
-export async function drawBoard(fen, checkSquare, isCheckmate, options = {}) {
-  const lightColor = options.lightColor || defaultLightColor;
-  const darkColor = options.darkColor || defaultDarkColor;
-  const borderColor = options.borderColor || defaultBorderColor;
-  const checkColor = options.checkColor || defaultCheckColor;
-  const pieceSet = options.pieceSet || 'pixel';
-  const fullSize = boardSize + borderSize * 2;
+// clamp helper
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-  const canvas = sharp({
-    create: {
-      width: fullSize,
-      height: fullSize,
-      channels: 4,
-      background: borderColor
-    }
-  }).png();
-
-  const boardBuffer = Buffer.alloc(boardSize * boardSize * 4);
-  for (let y = 0; y < boardSize; y++) {
-    for (let x = 0; x < boardSize; x++) {
-      const rankIdx = Math.floor(y / squareSize);
-      const fileIdx = Math.floor(x / squareSize);
-      const isDark = (rankIdx + fileIdx) % 2 === 1;
-      let color = isDark ? darkColor : lightColor;
-      if (checkSquare && checkSquare.rank === rankIdx && checkSquare.file === fileIdx) {
-        color = checkColor;
-      }
-      const idx = (y * boardSize + x) * 4;
-      boardBuffer[idx] = color.r;
-      boardBuffer[idx + 1] = color.g;
-      boardBuffer[idx + 2] = color.b;
-      boardBuffer[idx + 3] = color.alpha * 255;
-    }
-  }
-
-  const overlays = [{
-    input: boardBuffer,
-    raw: { width: boardSize, height: boardSize, channels: 4 },
-    top: borderSize,
-    left: borderSize
-  }];
-
-  const fenRanks = fen.split(' ')[0].split('/');
-  let kingToRotate = null;
-  if (isCheckmate && options.rotateKing) {
-    const fenParts = fen.split(' ');
-    const turn = fenParts[1] || 'w';
-    for (let rankIdx = 0; rankIdx < 8; rankIdx++) {
-      let fileIdx = 0;
-      for (const char of fenRanks[rankIdx]) {
-        if (/\d/.test(char)) {
-          fileIdx += parseInt(char, 10);
-          continue;
-        }
-        const isWhite = char === char.toUpperCase();
-        const pieceType = pieceMap[char.toLowerCase()];
-        if (pieceType === 'K' && ((turn === 'w' && isWhite) || (turn === 'b' && !isWhite))) {
-          kingToRotate = { rankIdx, fileIdx, isWhite };
-        }
-        fileIdx++;
-      }
-    }
-  }
-
-  for (let rankIdx = 0; rankIdx < 8; rankIdx++) {
-    let fileIdx = 0;
-    for (const char of fenRanks[rankIdx]) {
-      if (/\d/.test(char)) {
-        fileIdx += parseInt(char, 10);
-        continue;
-      }
-      const isWhite = char === char.toUpperCase();
-      const pieceType = pieceMap[char.toLowerCase()];
-      if (pieceType) {
-        const pieceColor = isWhite ? 'w' : 'b';
-        const pieceFile = path.resolve(`assets/${pieceSet}`, `${pieceColor}${pieceType}.png`);
-        try {
-          let pieceSharp = sharp(pieceFile);
-          const pieceSize = Math.floor(squareSize * pieceScale);
-          pieceSharp = pieceSharp.resize(pieceSize, pieceSize);
-          if (isCheckmate && options.pieceColorOverride) {
-            const { r, g, b, alpha } = options.pieceColorOverride;
-            pieceSharp = pieceSharp
-              .grayscale()
-              .modulate({ brightness: 1, saturation: 0 })
-              .tint({ r, g, b });
-          } else if (isCheckmate) {
-            pieceSharp = pieceSharp.grayscale();
-          }
-          let rotateAngle = 0;
-          if (
-            isCheckmate && options.rotateKing &&
-            kingToRotate && kingToRotate.rankIdx === rankIdx && kingToRotate.fileIdx === fileIdx
-          ) {
-            rotateAngle = 90;
-            pieceSharp = pieceSharp.rotate(rotateAngle, { background: { r: 0, g: 0, b: 0, alpha: 0 } });
-          }
-          const pieceBuf = await pieceSharp.toBuffer();
-          const offset = Math.floor((squareSize - pieceSize) / 2);
-          overlays.push({
-            input: pieceBuf,
-            top: borderSize + rankIdx * squareSize + offset,
-            left: borderSize + fileIdx * squareSize + offset
-          });
-        } catch (err) {
-          console.error(`Failed to load or process piece ${pieceFile}: ${err.message}`);
-        }
-      }
-      fileIdx++;
-    }
-  }
-
-  for (let i = 0; i < 8; i++) {
-    const fileLabel = await createTextOverlay(files[i], squareSize, borderSize, 28);
-    overlays.push({
-      input: fileLabel,
-      top: fullSize - borderSize,
-      left: borderSize + i * squareSize
-    });
-
-    const rankLabel = await createTextOverlay(ranks[i], borderSize, squareSize, 28);
-    overlays.push({
-      input: rankLabel,
-      top: borderSize + i * squareSize,
-      left: 0
-    });
-  }
-
-  const watermarkWidth = borderSize * 3;
-  const watermark = await createTextOverlay(watermarkText, watermarkWidth, borderSize, 16);
-  overlays.push({
-    input: watermark,
-    top: 0,
-    left: fullSize - watermarkWidth
-  });
-
-  return await canvas.composite(overlays).toBuffer();
+// map fen rank/file to pixel position depending on flip
+function mapSquarePos(rankIdx, fileIdx, borderTop, borderLeft, flip) {
+	const r = flip ? 7 - rankIdx : rankIdx;
+	const f = flip ? 7 - fileIdx : fileIdx;
+	return {
+		left: borderLeft + f * squareSize,
+		top: borderTop + r * squareSize,
+	};
 }
+
+// options:
+//   flip: boolean
+//   lightColor, darkColor, borderColor
+//   watermark: string
+//   checkSquare: { rank, file }  (rank 0..7 top->bottom, file 0..7 left->right in fen coords)
+//   inCheck, isCheckmate (not currently used for drawing, but available)
+//   eval: number (-inf..+inf) typical -10..+10
+//   clocks: { white: 'mm:ss', black: 'mm:ss' }
+//   players: { white: 'name', black: 'name' }
+//   elo: { white: number, black: number }
+export async function drawBoard(fen, options = {}) {
+	options = options || {};
+	const flip = Boolean(options.flip);
+	const lightColor = options.lightColor || defaultLightColor;
+	const darkColor = options.darkColor || defaultDarkColor;
+	const borderColor = options.borderColor || defaultBorderColor;
+	const checkColor = options.checkColor || defaultCheckColor;
+	const watermarkText = options.watermark || watermarkTextDefault;
+
+	const showEval = typeof options.eval === 'number';
+	const showClocks = options.clocks && (options.clocks.white || options.clocks.black);
+	const showPlayers = options.players && (options.players.white || options.players.black);
+	const showPlayerArea = showClocks || showPlayers;
+
+	let borderTop = showPlayerArea ? playerAreaHeight + playerPadding : 0;
+	let borderBottom = showPlayerArea ? playerAreaHeight + playerPadding : 0;
+	let borderLeft = 0;
+	let borderRight = showEval ? evalBarWidth : 0;
+
+	const fullWidth = borderLeft + boardSize + borderRight;
+	const fullHeight = borderTop + boardSize + borderBottom;
+
+	let canvas = sharp({
+		create: {
+			width: fullWidth,
+			height: fullHeight,
+			channels: 4,
+			background: borderColor,
+		},
+	});
+
+	let overlays = [];
+
+	for (let rank = 0; rank < 8; rank++) {
+		for (let file = 0; file < 8; file++) {
+			const isDark = (rank + file) % 2 === 1;
+			const color = isDark ? darkColor : lightColor;
+			const pos = mapSquarePos(rank, file, borderTop, borderLeft, false);
+			overlays.push({
+				input: {
+					create: {
+						width: squareSize,
+						height: squareSize,
+						channels: 4,
+						background: color,
+					},
+				},
+				left: pos.left,
+				top: pos.top,
+			});
+		}
+	}
+
+	const fenParts = fen.split(' ');
+	const fenRanks = fenParts[0].split('/');
+	if (fenRanks.length !== 8) throw new Error('invalid fen: expected 8 ranks');
+
+	for (let rankIdx = 0; rankIdx < 8; rankIdx++) {
+		const rankStr = fenRanks[rankIdx];
+		let fileIdx = 0;
+		for (const ch of rankStr) {
+			if (/[1-8]/.test(ch)) {
+				fileIdx += parseInt(ch);
+				continue;
+			}
+			const color = ch === ch.toUpperCase() ? 'w' : 'b';
+			const piece = ch.toLowerCase();
+			const pieceLetter = { p: 'P', n: 'N', b: 'B', r: 'R', q: 'Q', k: 'K' }[piece];
+			if (!pieceLetter) {
+				fileIdx++;
+				continue;
+			}
+			const set = options.pieceSet || 'assets/pixel';
+			const piecePath = path.resolve(set, `${color}${pieceLetter}.png`);
+			const pieceSize = Math.floor(squareSize * pieceScale);
+			const offset = Math.floor((squareSize - pieceSize) / 2);
+
+			const pos = mapSquarePos(rankIdx, fileIdx, borderTop, borderLeft, flip);
+
+			try {
+				const pieceBuffer = await sharp(piecePath)
+					.resize(pieceSize, pieceSize)
+					.png()
+					.toBuffer();
+				overlays.push({
+					input: pieceBuffer,
+					left: pos.left + offset,
+					top: pos.top + offset,
+				});
+			} catch (err) {
+				console.error(`Failed to load piece: ${piecePath}`, err);
+			}
+
+			fileIdx++;
+		}
+		if (fileIdx !== 8)
+			throw new Error(`Invalid rank ${rankIdx + 1} in FEN: file count ${fileIdx}`);
+	}
+
+	if (options.checkSquare) {
+		const cs = options.checkSquare;
+		const csRank = cs.rank;
+		const csFile = cs.file;
+		if (csRank < 0 || csRank > 7 || csFile < 0 || csFile > 7)
+			throw new Error('Invalid checkSquare coordinates');
+		const mapped = mapSquarePos(csRank, csFile, borderTop, borderLeft, flip);
+		overlays.push({
+			input: {
+				create: {
+					width: squareSize,
+					height: squareSize,
+					channels: 4,
+					background: checkColor,
+				},
+			},
+			left: mapped.left,
+			top: mapped.top,
+		});
+	}
+
+	const coordFill = 'rgba(14, 14, 14, 0.5)';
+	const coordFontSize = 14;
+
+	for (let i = 0; i < 8; i++) {
+		const fileChar = flip ? files[7 - i] : files[i];
+		const svgBottom = svgTextBuffer(fileChar, squareSize, coordSize, {
+			fontSize: coordFontSize,
+			fill: coordFill,
+			anchor: 'middle',
+		});
+		const left = borderLeft + i * squareSize;
+		const top = borderTop + boardSize - coordSize;
+		overlays.push({ input: svgBottom, left, top });
+	}
+
+	for (let i = 0; i < 8; i++) {
+		const rankChar = flip ? ranks[7 - i] : ranks[i];
+		const svgLeft = svgTextBuffer(rankChar, coordSize, squareSize, {
+			fontSize: coordFontSize,
+			fill: coordFill,
+			anchor: 'start',
+		});
+		const top = borderTop + i * squareSize;
+		const left = borderLeft;
+		overlays.push({ input: svgLeft, left, top });
+	}
+
+	if (showPlayerArea) {
+		const nameFontSize = 14;
+		const topPlayer = flip ? 'white' : 'black';
+		const bottomPlayer = flip ? 'black' : 'white';
+		let topName = (options.players && options.players[topPlayer]) || '';
+		const topElo = options.elo && options.elo[topPlayer];
+		if (topElo) topName += ` (${topElo})`;
+		let bottomName = (options.players && options.players[bottomPlayer]) || '';
+		const bottomElo = options.elo && options.elo[bottomPlayer];
+		if (bottomElo) bottomName += ` (${bottomElo})`;
+		const topClock = (options.clocks && options.clocks[topPlayer]) || '';
+		const bottomClock = (options.clocks && options.clocks[bottomPlayer]) || '';
+
+		const playerWidth = boardSize;
+		const playerLeft = borderLeft;
+
+		const topSvgText = `<svg xmlns="http://www.w3.org/2000/svg" width="${playerWidth}" height="${playerAreaHeight}">
+      <style>.t{ fill:#ddd; font-family: Arial, sans-serif; font-size:${nameFontSize}px }</style>
+      <text x="6" y="50%" dominant-baseline="middle" text-anchor="start" class="t">${topName}</text>
+      <text x="${
+			playerWidth - 6
+		}" y="50%" dominant-baseline="middle" text-anchor="end" class="t">${topClock}</text>
+    </svg>`;
+		const topPlayerY = 0;
+		overlays.push({ input: Buffer.from(topSvgText), left: playerLeft, top: topPlayerY });
+
+		const bottomSvgText = `<svg xmlns="http://www.w3.org/2000/svg" width="${playerWidth}" height="${playerAreaHeight}">
+      <style>.t{ fill:#ddd; font-family: Arial, sans-serif; font-size:${nameFontSize}px }</style>
+      <text x="6" y="50%" dominant-baseline="middle" text-anchor="start" class="t">${bottomName}</text>
+      <text x="${
+			playerWidth - 6
+		}" y="50%" dominant-baseline="middle" text-anchor="end" class="t">${bottomClock}</text>
+    </svg>`;
+		const bottomPlayerY = fullHeight - playerAreaHeight;
+		overlays.push({ input: Buffer.from(bottomSvgText), left: playerLeft, top: bottomPlayerY });
+	}
+
+	const watermarkWidth = 80;
+	const watermarkSvg = svgTextBuffer(watermarkText, watermarkWidth, coordSize, {
+		fontSize: 12,
+		fill: '#bbbbbb',
+		anchor: 'end',
+	});
+	overlays.push({ input: watermarkSvg, left: fullWidth - watermarkWidth - 6, top: 12 });
+
+	if (showEval) {
+		let ev = Number(options.eval);
+		if (!Number.isFinite(ev)) ev = 0;
+		ev = clamp(ev, -10, 10);
+		const whitePercent = (ev + 10) / 20;
+		const whiteHeight = Math.round(boardSize * whitePercent);
+		const blackHeight = boardSize - whiteHeight;
+
+		const evalLeft = boardSize;
+		const evalTop = borderTop;
+
+		if (blackHeight > 0) {
+			overlays.push({
+				input: {
+					create: {
+						width: evalBarWidth,
+						height: blackHeight,
+						channels: 4,
+						background: { r: 80, g: 80, b: 80, alpha: 1 },
+					},
+				},
+				left: evalLeft,
+				top: evalTop,
+			});
+		}
+
+		if (whiteHeight > 0) {
+			const whiteTop = evalTop + boardSize - whiteHeight;
+			overlays.push({
+				input: {
+					create: {
+						width: evalBarWidth,
+						height: whiteHeight,
+						channels: 4,
+						background: { r: 240, g: 240, b: 240, alpha: 1 },
+					},
+				},
+				left: evalLeft,
+				top: whiteTop,
+			});
+		}
+
+		const evalLabel =
+			(ev >= 0 ? '+' : '') + (Math.abs(ev) < 10 ? ev.toFixed(2) : ev.toString());
+		const evalSvg = svgTextBuffer(evalLabel, evalBarWidth, 18, { fontSize: 12, fill: '#eee' });
+		const evalLabelY = borderTop + boardSize + 4;
+		overlays.push({ input: evalSvg, left: evalLeft, top: evalLabelY });
+	}
+
+	canvas = canvas.composite(overlays);
+
+	return await canvas
+		.png({
+			compressionLevel: 9,
+			adaptiveFiltering: true,
+		})
+		.toBuffer();
+}
+
+export default { drawBoard };
