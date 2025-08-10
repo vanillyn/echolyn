@@ -1,18 +1,27 @@
-    {
-  "name": "echolyn",
-  "version": "0.0.1-alpha",
-  "type": "module",
-  "scripts": {
-    "start": "bun src/index.js"
-  },
+{
   "dependencies": {
-    "discord.js": "^14.16.3",
-    "chalk": "^5.3.0",
-    "dotenv": "^16.4.5",
-    "pino": "9.8.0",
+    "chalk": "^5.5.0",
+    "chess-web-api": "^1.2.0",
     "chess.js": "^1.4.0",
-    "stockfish": "^16.0.0",
-    "lichess": "2.0.15",
-    "chess-web-api": "1.2.0"
+    "discord.js": "^14.21.0",
+    "dotenv": "^17.2.1",
+    "pino": "^9.8.0",
+    "pino-pretty": "^13.1.1",
+    "sharp": "^0.34.3",
+    "stockfish": "^16.0.0"
+  },
+  "name": "echolyn",
+  "module": "index.js",
+  "type": "module",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "start": "bun run index.js"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
   }
 }

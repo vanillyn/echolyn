@@ -1,3 +1,26 @@
+# dependencies
+/node_modules
+/bun.lockb
+/bun.lock
+
+# build output
+/dist
+/build
+/out
+
+# editor files
+.idea/
+.vscode/
+
+# logs and caches
+*.log
+.bun/
+
+# env files
 .env
-node_modules/
+.env.local
+.env.*.local
+
+# os files
 .DS_Store
+Thumbs.db

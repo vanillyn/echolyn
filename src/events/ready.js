@@ -1,4 +1,4 @@
-import { log } from '../utils/init.js'
+import { log } from '../init.js'
 
 export default {
   name: 'ready',

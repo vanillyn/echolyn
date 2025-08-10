@@ -1,6 +1,6 @@
 import { Client, GatewayIntentBits } from 'discord.js'
 import config from './config.js'
-import { initClient, log } from './utils/init.js'
+import { initClient, log } from './src/init.js'
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
@@ -9,4 +9,4 @@ const client = new Client({
 await initClient(client)
 
 client.login(config.token)
-log.info('bot starting...')
+log.debug('bot starting...')

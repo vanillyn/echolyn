@@ -1,4 +1,4 @@
-import { log } from '../utils/init.js'
+import { log } from '../init.js'
 
 export default {
   name: 'interactionCreate',
@@ -15,7 +15,8 @@ export default {
       await command.execute(interaction, client)
     } catch (err) {
       log.error({ err }, 'command error')
-      if (!interaction.replied) {
+      
+      if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({ content: 'error running command', ephemeral: true })
       }
     }

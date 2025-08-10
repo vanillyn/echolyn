@@ -12,7 +12,7 @@ export const log = pino({
       translateTime: 'SYS:standard'
     }
   },
-  level: 'info'
+  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug'
 })
 
 export async function initClient(client) {
@@ -23,9 +23,10 @@ export async function initClient(client) {
   const cmdData = []
 
   for (const file of cmdFiles) {
-    const cmd = (await import(`../cmds/${file}`)).default
+    const cmd = (await import(`./cmds/${file}`)).default
     client.commands.set(cmd.data.name, cmd)
-    cmdData.push({ name: cmd.data.name, description: cmd.data.description })
+    cmdData.push(cmd.data.toJSON())
+    log.debug(`loaded command: ${cmd.data.name}`)
   }
 
   const rest = new REST({ version: '10' }).setToken(config.token)
@@ -40,7 +41,7 @@ export async function initClient(client) {
   const eventFiles = fs.readdirSync(eventsPath).filter(f => f.endsWith('.js'))
 
   for (const file of eventFiles) {
-    const event = (await import(`../events/${file}`)).default
+    const event = (await import(`./events/${file}`)).default
     if (event.once) {
       client.once(event.name, (...args) => event.execute(...args, client))
     } else {
