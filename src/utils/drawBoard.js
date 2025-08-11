@@ -16,6 +16,7 @@ const defaultLightColor = { r: 230, g: 230, b: 230, alpha: 1 };
 const defaultDarkColor = { r: 112, g: 112, b: 112, alpha: 1 };
 const defaultBorderColor = { r: 30, g: 30, b: 30, alpha: 1 };
 const defaultCheckColor = { r: 255, g: 0, b: 0, alpha: 0.45 };
+const defaultArrowColor = { r: 0, g: 255, b: 0, alpha: 0.8 };
 const watermarkTextDefault = process.env.BOT_NAME || 'echolyn';
 
 function svgTextBuffer(text, width, height, opts = {}) {
@@ -36,10 +37,8 @@ function svgTextBuffer(text, width, height, opts = {}) {
 	return Buffer.from(svg);
 }
 
-// clamp helper
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-// map fen rank/file to pixel position depending on flip
 function mapSquarePos(rankIdx, fileIdx, borderTop, borderLeft, flip) {
 	const r = flip ? 7 - rankIdx : rankIdx;
 	const f = flip ? 7 - fileIdx : fileIdx;
@@ -49,16 +48,83 @@ function mapSquarePos(rankIdx, fileIdx, borderTop, borderLeft, flip) {
 	};
 }
 
-// options:
-//   flip: boolean
-//   lightColor, darkColor, borderColor
-//   watermark: string
-//   checkSquare: { rank, file }  (rank 0..7 top->bottom, file 0..7 left->right in fen coords)
-//   inCheck, isCheckmate (not currently used for drawing, but available)
-//   eval: number (-inf..+inf) typical -10..+10
-//   clocks: { white: 'mm:ss', black: 'mm:ss' }
-//   players: { white: 'name', black: 'name' }
-//   elo: { white: number, black: number }
+function algebraicToCoords(square) {
+	if (!square || square.length !== 2) return null;
+	const file = square.charCodeAt(0) - 97;
+	const rank = 8 - parseInt(square[1]);
+	if (file < 0 || file > 7 || rank < 0 || rank > 7) return null;
+	return { rank, file };
+}
+
+function createArrowSvg(fromSquare, toSquare, flip, boardSize, squareSize) {
+	const from = algebraicToCoords(fromSquare);
+	const to = algebraicToCoords(toSquare);
+	if (!from || !to) return null;
+
+	const fromPos = mapSquarePos(from.rank, from.file, 0, 0, flip);
+	const toPos = mapSquarePos(to.rank, to.file, 0, 0, flip);
+
+	const fromX = fromPos.left + squareSize / 2;
+	const fromY = fromPos.top + squareSize / 2;
+	const toX = toPos.left + squareSize / 2;
+	const toY = toPos.top + squareSize / 2;
+
+	const dx = toX - fromX;
+	const dy = toY - fromY;
+	const length = Math.sqrt(dx * dx + dy * dy);
+
+	if (length < 10) return null;
+
+	const unitX = dx / length;
+	const unitY = dy / length;
+
+	const arrowLength = Math.min(length * 0.3, squareSize * 0.4);
+	const arrowWidth = arrowLength * 0.6;
+
+	const arrowTipX = toX - unitX * squareSize * 0.15;
+	const arrowTipY = toY - unitY * squareSize * 0.15;
+
+	const perpX = -unitY;
+	const perpY = unitX;
+
+	const arrowBase1X = arrowTipX - unitX * arrowLength - perpX * arrowWidth / 2;
+	const arrowBase1Y = arrowTipY - unitY * arrowLength - perpY * arrowWidth / 2;
+	const arrowBase2X = arrowTipX - unitX * arrowLength + perpX * arrowWidth / 2;
+	const arrowBase2Y = arrowTipY - unitY * arrowLength + perpY * arrowWidth / 2;
+
+	const shaftWidth = squareSize * 0.12;
+	const shaftStart = squareSize * 0.15;
+	const shaftEnd = length - arrowLength * 0.7;
+
+	const shaftStartX = fromX + unitX * shaftStart;
+	const shaftStartY = fromY + unitY * shaftStart;
+	const shaftEndX = fromX + unitX * shaftEnd;
+	const shaftEndY = fromY + unitY * shaftEnd;
+
+	const shaft1X = shaftStartX - perpX * shaftWidth / 2;
+	const shaft1Y = shaftStartY - perpY * shaftWidth / 2;
+	const shaft2X = shaftStartX + perpX * shaftWidth / 2;
+	const shaft2Y = shaftStartY + perpY * shaftWidth / 2;
+	const shaft3X = shaftEndX + perpX * shaftWidth / 2;
+	const shaft3Y = shaftEndY + perpY * shaftWidth / 2;
+	const shaft4X = shaftEndX - perpX * shaftWidth / 2;
+	const shaft4Y = shaftEndY - perpY * shaftWidth / 2;
+
+	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${boardSize}" height="${boardSize}">
+		<defs>
+			<filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+				<feDropShadow dx="1" dy="1" stdDeviation="1" flood-color="black" flood-opacity="0.3"/>
+			</filter>
+		</defs>
+		<polygon points="${shaft1X},${shaft1Y} ${shaft2X},${shaft2Y} ${shaft3X},${shaft3Y} ${shaft4X},${shaft4Y}" 
+			fill="rgba(0,255,0,0.8)" stroke="rgba(0,200,0,0.9)" stroke-width="1" filter="url(#shadow)"/>
+		<polygon points="${arrowTipX},${arrowTipY} ${arrowBase1X},${arrowBase1Y} ${arrowBase2X},${arrowBase2Y}" 
+			fill="rgba(0,255,0,0.8)" stroke="rgba(0,200,0,0.9)" stroke-width="1" filter="url(#shadow)"/>
+	</svg>`;
+
+	return Buffer.from(svg);
+}
+
 export async function drawBoard(fen, options = {}) {
 	options = options || {};
 	const flip = Boolean(options.flip);
@@ -177,6 +243,19 @@ export async function drawBoard(fen, options = {}) {
 			left: mapped.left,
 			top: mapped.top,
 		});
+	}
+
+	if (options.bestMove && options.bestMove.length >= 4) {
+		const fromSquare = options.bestMove.slice(0, 2);
+		const toSquare = options.bestMove.slice(2, 4);
+		const arrowSvg = createArrowSvg(fromSquare, toSquare, flip, boardSize, squareSize);
+		if (arrowSvg) {
+			overlays.push({
+				input: arrowSvg,
+				left: borderLeft,
+				top: borderTop,
+			});
+		}
 	}
 
 	const coordFill = 'rgba(14, 14, 14, 0.5)';

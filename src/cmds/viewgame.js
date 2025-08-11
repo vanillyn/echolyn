@@ -8,6 +8,7 @@ import {
 } from 'discord.js';
 import { Chess } from 'chess.js';
 import { drawBoard } from '../utils/drawBoard.js';
+import { analyzePosition } from '../utils/stockfish.js';
 import { log } from '../init.js';
 
 let ChessWebAPI;
@@ -189,7 +190,6 @@ function buildFensAndMetaFromPgn(pgn) {
 	const fens = [];
 	const meta = [];
 
-	// initial
 	fens.push(chess.fen());
 	meta.push({
 		inCheck: chess.inCheck(),
@@ -204,7 +204,7 @@ function buildFensAndMetaFromPgn(pgn) {
 	let lastClocks = { white: null, black: null };
 
 	for (const moveObj of movesWithComments) {
-    ss.move(moveObj.san, { sloppy: true });
+		const moveResult = chess.move(moveObj.san, { sloppy: true });
 		if (!moveResult) {
 			break;
 		}
@@ -363,7 +363,6 @@ export default {
 };
 
 async function processPgn(interaction, pgn) {
-	// build fens and meta (this also extracts headers)
 	const parsed = buildFensAndMetaFromPgn(pgn);
 	if (!parsed || !parsed.fens || parsed.fens.length === 0) {
 		return interaction.editReply({
@@ -381,18 +380,24 @@ async function processPgn(interaction, pgn) {
 	const site = headers.Site || '';
 	const date = headers.Date || '';
 
-	// build embed image helper
 	let orientationFlipped = false;
+	const stockfishEvals = new Map();
 
 	async function buildEmbedAtIndex(idx) {
 		const fen = fens[idx];
 		const m = meta[idx] || {};
+		
+		const stockfishData = stockfishEvals.get(idx);
+		const evalToUse = stockfishData?.eval ?? m.eval;
+		const bestMove = stockfishData?.bestMove;
+
 		const drawOptions = {
 			flip: orientationFlipped,
 			checkSquare: m.checkSquare || null,
 			inCheck: Boolean(m.inCheck),
 			isCheckmate: Boolean(m.isCheckmate),
-			eval: m.eval,
+			eval: evalToUse,
+			bestMove: bestMove,
 			clocks: m.clocks,
 			players: { white, black },
 			watermark: 'echolyn',
@@ -416,6 +421,17 @@ async function processPgn(interaction, pgn) {
 			const moveText = `${moveNum}${side} ${lastMove.san}${lastMove.glyph || ''}`;
 			description += `\nlast move: ${moveText}`;
 		}
+
+		if (stockfishData) {
+			let evalText = '';
+			if (stockfishData.mateIn !== null) {
+				evalText = `mate in ${stockfishData.mateIn}`;
+			} else if (stockfishData.eval !== null) {
+				evalText = `${stockfishData.eval >= 0 ? '+' : ''}${stockfishData.eval.toFixed(2)}`;
+			}
+			description += `\nstockfish: ${stockfishData.bestMove} (${evalText})`;
+		}
+
 		embed.setDescription(description);
 
 		embed.addFields(
@@ -440,7 +456,6 @@ async function processPgn(interaction, pgn) {
 		return { embed, attachment };
 	}
 
-	// buttons: nav, flip, pgn, movelist
 	const row = new ActionRowBuilder().addComponents(
 		new ButtonBuilder().setCustomId('start').setLabel('<<').setStyle(ButtonStyle.Primary),
 		new ButtonBuilder().setCustomId('prev').setLabel('<').setStyle(ButtonStyle.Secondary),
@@ -454,10 +469,14 @@ async function processPgn(interaction, pgn) {
 			.setLabel('Flip Board')
 			.setStyle(ButtonStyle.Secondary),
 		new ButtonBuilder()
-			.setCustomId('movelist')
-			.setLabel('Show Move List')
+			.setCustomId('evaluate')
+			.setLabel('Evaluate Position')
 			.setStyle(ButtonStyle.Success),
-		new ButtonBuilder().setCustomId('pgn').setLabel('Show PGN').setStyle(ButtonStyle.Success)
+		new ButtonBuilder()
+			.setCustomId('movelist')
+			.setLabel('Move List')
+			.setStyle(ButtonStyle.Secondary),
+		new ButtonBuilder().setCustomId('pgn').setLabel('PGN').setStyle(ButtonStyle.Secondary)
 	);
 
 	let idx = 0;
@@ -486,8 +505,25 @@ async function processPgn(interaction, pgn) {
 			else if (i.customId === 'end') idx = fens.length - 1;
 			else if (i.customId === 'flip') {
 				orientationFlipped = !orientationFlipped;
+			} else if (i.customId === 'evaluate') {
+				if (stockfishEvals.has(idx)) {
+					const next = await buildEmbedAtIndex(idx);
+					return i.update({ embeds: [next.embed], files: [next.attachment] });
+				}
+
+				await i.deferUpdate();
+				
+				try {
+					const result = await analyzePosition(fens[idx], { searchTime: 3000 });
+					stockfishEvals.set(idx, result);
+					const next = await buildEmbedAtIndex(idx);
+					await i.editReply({ embeds: [next.embed], files: [next.attachment] });
+				} catch (error) {
+					log.error(`Stockfish evaluation error: ${error}`, error);
+					await i.followUp({ content: 'Failed to evaluate position', ephemeral: true });
+				}
+				return;
 			} else if (i.customId === 'movelist') {
-				// build move list with glyphs and clean comments
 				let listText = '';
 				let moveNum = 1;
 				for (let mvIdx = 0; mvIdx < moves.length; mvIdx += 2) {
