@@ -1,5 +1,6 @@
 import sharp from 'sharp';
 import path from 'node:path';
+import { escapeXml } from './utils';
 
 const squareSize = 64;
 const boardSize = squareSize * 8;
@@ -303,7 +304,7 @@ export async function drawBoard(fen, options = {}) {
 
 		const topSvgText = `<svg xmlns="http://www.w3.org/2000/svg" width="${playerWidth}" height="${playerAreaHeight}">
       <style>.t{ fill:#ddd; font-family: Arial, sans-serif; font-size:${nameFontSize}px }</style>
-      <text x="6" y="50%" dominant-baseline="middle" text-anchor="start" class="t">${topName}</text>
+      <text x="6" y="50%" dominant-baseline="middle" text-anchor="start" class="t">${escapeXml(topName)}</text>
       <text x="${
 			playerWidth - 6
 		}" y="50%" dominant-baseline="middle" text-anchor="end" class="t">${topClock}</text>
@@ -313,7 +314,7 @@ export async function drawBoard(fen, options = {}) {
 
 		const bottomSvgText = `<svg xmlns="http://www.w3.org/2000/svg" width="${playerWidth}" height="${playerAreaHeight}">
       <style>.t{ fill:#ddd; font-family: Arial, sans-serif; font-size:${nameFontSize}px }</style>
-      <text x="6" y="50%" dominant-baseline="middle" text-anchor="start" class="t">${bottomName}</text>
+      <text x="6" y="50%" dominant-baseline="middle" text-anchor="start" class="t">${escapeXml(topName)}</text>
       <text x="${
 			playerWidth - 6
 		}" y="50%" dominant-baseline="middle" text-anchor="end" class="t">${bottomClock}</text>
@@ -333,13 +334,12 @@ export async function drawBoard(fen, options = {}) {
 	if (showEval) {
 	let ev = Number(options.eval);
 	if (!Number.isFinite(ev)) ev = 0;
-	
-	// Handle mate and large evaluations
+
 	let whitePercent;
 	if (ev > 10) {
-		whitePercent = 1; // White completely winning
+		whitePercent = 1; 
 	} else if (ev < -10) {
-		whitePercent = 0; // Black completely winning
+		whitePercent = 0; 
 	} else {
 		whitePercent = (ev + 10) / 20;
 	}

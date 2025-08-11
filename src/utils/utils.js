@@ -6,6 +6,15 @@ export const hexToRgba = hex => {
 	return { r, g, b, alpha: 1 };
 };
 
+export function escapeXml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 export function isInCheck(chess) {
     const isInCheck = chess.inCheck();
     let checkSquare = null;
