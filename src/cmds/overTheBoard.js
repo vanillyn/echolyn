@@ -7,7 +7,8 @@ import {
   ButtonStyle,
   ModalBuilder,
   TextInputBuilder,
-  TextInputStyle
+  TextInputStyle,
+  MessageFlags,
 } from 'discord.js'
 import { GameManager } from '../utils/game/gameManager.js'
 import { drawBoard } from '../utils/drawBoard.js'
@@ -41,11 +42,11 @@ export default {
     if (subcommand === 'resign') {
       const game = GameManager.getGameByChannel(interaction.channelId)
       if (!game) {
-        return interaction.reply({ content: 'No active game in this channel', ephemeral: true })
+        return interaction.reply({ content: 'No active game in this channel', flags: MessageFlags.Ephemeral })
       }
       
       if (!game.isInGame(interaction.user.id)) {
-        return interaction.reply({ content: 'You are not in this game', ephemeral: true })
+        return interaction.reply({ content: 'You are not in this game', flags: MessageFlags.Ephemeral })
       }
       
       game.resign(interaction.user.id)
@@ -56,7 +57,7 @@ export default {
 
     const existingGame = GameManager.getGameByChannel(interaction.channelId)
     if (existingGame) {
-      return interaction.reply({ content: 'A game is already active in this channel', ephemeral: true })
+      return interaction.reply({ content: 'A game is already active in this channel', flags: MessageFlags.Ephemeral })
     }
 
     let players, gameType, difficulty = 1500
@@ -65,10 +66,10 @@ export default {
       const opponent = interaction.options.getUser('opponent')
       if (opponent) {
         if (opponent.id === interaction.user.id) {
-          return interaction.reply({ content: 'Cannot challenge yourself', ephemeral: true })
+          return interaction.reply({ content: 'Cannot challenge yourself', flags: MessageFlags.Ephemeral })
         }
         if (opponent.bot) {
-          return interaction.reply({ content: 'Cannot challenge bots', ephemeral: true })
+          return interaction.reply({ content: 'Cannot challenge bots', flags: MessageFlags.Ephemeral })
         }
         players = [interaction.user.id, opponent.id]
         gameType = 'pvp'
@@ -168,7 +169,7 @@ export default {
     collector.on('collect', async i => {
       if (i.customId === 'join_game' && game.players.length === 1) {
         if (i.user.id === game.players[0]) {
-          return i.reply({ content: 'You cannot play against yourself', ephemeral: true })
+          return i.reply({ content: 'You cannot play against yourself', flags: MessageFlags.Ephemeral })
         }
         game.players.push(i.user.id)
         await this.updateGameMessage(i, game)
@@ -177,7 +178,7 @@ export default {
 
       if (i.customId === 'make_move') {
         if (!game.isPlayerTurn(i.user.id)) {
-          return i.reply({ content: 'Not your turn!', ephemeral: true })
+          return i.reply({ content: 'Not your turn!', flags: MessageFlags.Ephemeral })
         }
         await this.showMoveModal(i, game)
         return
@@ -191,7 +192,7 @@ export default {
 
       if (i.customId === 'resign') {
         if (!game.isInGame(i.user.id)) {
-          return i.reply({ content: 'You are not in this game', ephemeral: true })
+          return i.reply({ content: 'You are not in this game', flags: MessageFlags.Ephemeral })
         }
         game.resign(i.user.id)
         await this.updateGameMessage(i, game)
@@ -234,7 +235,7 @@ export default {
     const moveResult = await game.makeMove(moveInput)
     
     if (!moveResult) {
-      return modalSubmit.reply({ content: 'Invalid move! Try again.', ephemeral: true })
+      return modalSubmit.reply({ content: 'Invalid move! Try again.', flags: MessageFlags.Ephemeral })
     }
     
     await this.updateGameMessage(modalSubmit, game)

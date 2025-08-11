@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder } from 'discord.js'
+import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js'
 import { userManager } from '../../data/userData.js'
 import { fetchUserProfile } from '../../utils/api/lichessApi.js'
 import { fetchChessComProfile } from '../../utils/api/chesscomApi.js'
@@ -23,7 +23,7 @@ export default {
     ),
 
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true })
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral })
     
     const subcommand = interaction.options.getSubcommand()
     const username = interaction.options.getString('username')
@@ -71,7 +71,7 @@ export default {
         )
         .setThumbnail(data.profile.avatar || null)
 
-      await interaction.editReply({ embeds: [embed] })
+      await interaction.editReply({ embeds: [embed], flags: MessageFlags.Ephemeral })
     }
   }
 }

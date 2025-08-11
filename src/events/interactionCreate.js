@@ -1,4 +1,5 @@
 import { log } from '../init.js'
+import { MessageFlags } from 'discord.js'
 
 export default {
   name: 'interactionCreate',
@@ -17,7 +18,7 @@ export default {
       log.error({ err }, 'command error')
       
       if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: 'error running command', ephemeral: true })
+        await interaction.reply({ content: 'error running command', flags: MessageFlags.Ephemeral })
       }
     }
   }

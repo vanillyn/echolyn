@@ -5,6 +5,7 @@ import {
 	ActionRowBuilder,
 	ButtonBuilder,
 	ButtonStyle,
+	MessageFlags,
 } from 'discord.js';
 import { drawBoard } from '../utils/drawBoard.js';
 import { analyzePosition } from '../utils/stockfish.js';
@@ -44,31 +45,31 @@ export default {
 				if (!id)
 					return interaction.editReply({
 						content: 'invalid lichess url',
-						ephemeral: true,
+						flags: MessageFlags.Ephemeral,
 					});
 				pgn = await fetchLichessPgn(id, true, true, true);
 				if (!pgn)
 					return interaction.editReply({
 						content: 'failed to fetch lichess pgn or game is private',
-						ephemeral: true,
+						flags: MessageFlags.Ephemeral,
 					});
 			} else if (url.includes('chess.com')) {
 				const id = extractChessComId(url);
 				if (!id)
 					return interaction.editReply({
 						content: 'invalid chess.com url',
-						ephemeral: true,
+						flags: MessageFlags.Ephemeral,
 					});
 				pgn = await fetchChessComPgn(id);
 				if (!pgn)
 					return interaction.editReply({
 						content: 'failed to fetch chess.com pgn',
-						ephemeral: true,
+						flags: MessageFlags.Ephemeral,
 					});
 			} else {
 				return interaction.editReply({
 					content: 'unsupported url, provide lichess or chess.com url',
-					ephemeral: true,
+					flags: MessageFlags.Ephemeral,
 				});
 			}
 		} else if (rawPgnText) {
@@ -77,7 +78,7 @@ export default {
 			if (!attachment.name.toLowerCase().endsWith('.pgn'))
 				return interaction.editReply({
 					content: 'uploaded file must be a .pgn',
-					ephemeral: true,
+					flags: MessageFlags.Ephemeral,
 				});
 			try {
 				const r = await fetch(attachment.url);
@@ -85,7 +86,7 @@ export default {
 			} catch (e) {
 				return interaction.editReply({
 					content: 'failed to download uploaded file',
-					ephemeral: true,
+					flags: MessageFlags.Ephemeral,
 				});
 			}
 		} else {
@@ -106,7 +107,7 @@ export default {
 					} else {
 						await interaction.editReply({
 							content: 'No PGN received.',
-							ephemeral: true,
+							flags: MessageFlags.Ephemeral,
 						});
 						resolve();
 					}
@@ -116,7 +117,7 @@ export default {
 					if (collected.size === 0) {
 						await interaction.editReply({
 							content: 'Timed out waiting for PGN.',
-							ephemeral: true,
+							flags: MessageFlags.Ephemeral,
 						});
 						resolve();
 					}
@@ -135,7 +136,7 @@ async function processPgn(interaction, pgn) {
 	if (!parsed || !parsed.fens || parsed.fens.length === 0) {
 		return interaction.editReply({
 			content: 'could not parse pgn or no moves found',
-			ephemeral: true,
+			flags: MessageFlags.Ephemeral,
 		});
 	}
 
@@ -263,7 +264,7 @@ async function processPgn(interaction, pgn) {
 			if (i.user.id !== interaction.user.id) {
 				return i.reply({
 					content: 'only the command user can control this viewer',
-					ephemeral: true,
+					flags: MessageFlags.Ephemeral,
 				});
 			}
 
@@ -288,7 +289,7 @@ async function processPgn(interaction, pgn) {
 					await i.editReply({ embeds: [next.embed], files: [next.attachment] });
 				} catch (error) {
 					log.error(`Stockfish evaluation error: ${error}`, error);
-					await i.followUp({ content: 'Failed to evaluate position', ephemeral: true });
+					await i.followUp({ content: 'Failed to evaluate position', flags: MessageFlags.Ephemeral });
 				}
 				return;
 			} else if (i.customId === 'movelist') {
@@ -315,7 +316,7 @@ async function processPgn(interaction, pgn) {
 				if (listText.length > 1900) listText = listText.slice(0, 1900) + '\n...truncated';
 				await i.reply({
 					content: '```\n' + (listText || 'no moves') + '```',
-					ephemeral: true,
+					flags: MessageFlags.Ephemeral,
 				});
 				return;
 			} else if (i.customId === 'pgn') {
@@ -325,7 +326,7 @@ async function processPgn(interaction, pgn) {
 						pgn.slice(0, 1900) +
 						(pgn.length > 1900 ? '\n...truncated' : '') +
 						'```',
-					ephemeral: true,
+					flags: MessageFlags.Ephemeral,
 				});
 				return;
 			}
@@ -335,7 +336,7 @@ async function processPgn(interaction, pgn) {
 		} catch (err) {
 			console.error('viewer collect err', err);
 			try {
-				await i.reply({ content: 'error handling interaction', ephemeral: true });
+				await i.reply({ content: 'error handling interaction', flags: MessageFlags.Ephemeral });
 			} catch {}
 		}
 	});

@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ActionRowBuilder, ButtonStyle } from 'discord.js'
+import { SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ActionRowBuilder, ButtonStyle, MessageFlags } from 'discord.js'
 import { userManager } from '../../data/userData.js'
 import { fetchUserGames } from '../../utils/api/lichessApi.js'
 import { fetchChessComRecentGames } from '../../utils/api/chesscomApi.js'
@@ -111,14 +111,14 @@ export default {
 
     collector.on('collect', async i => {
       if (i.user.id !== interaction.user.id) {
-        return i.reply({ content: 'only the command user can use these buttons', ephemeral: true })
+        return i.reply({ content: 'only the command user can use these buttons', flags: MessageFlags.Ephemeral })
       }
 
       const gameIndex = parseInt(i.customId.split('_')[1])
       const game = allGames[gameIndex]
 
       if (!game) {
-        return i.reply({ content: 'game not found', ephemeral: true })
+        return i.reply({ content: 'game not found', flags: MessageFlags.Ephemeral })
       }
 
       let gameUrl = game.url
@@ -128,7 +128,7 @@ export default {
 
       await i.reply({
         content: `**game ${gameIndex + 1}**: ${game.white} vs ${game.black}\nurl: ${gameUrl}\n\nuse \`/viewgame url:${gameUrl}\` to analyze this game`,
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       })
     })
 

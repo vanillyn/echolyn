@@ -1,30 +1,34 @@
 import ChessWebAPI from 'chess-web-api'
 import { log } from '../../init.js'
+import { MessageFlags } from 'discord.js'
 
 const chessAPI = new ChessWebAPI()
 
 export async function fetchChessComProfile(username) {
+  log.debug(`Cecelia: Fetching ${username}`);
   try {
     const profile = await chessAPI.getPlayer(username)
     const stats = await chessAPI.getPlayerStats(username)
     return { profile, stats }
   } catch (err) {
-    log.error(`Chess.com API error: ${err.message}`)
+    log.error(`Cecelia: API error: ${err.message}`)
     return null
   }
 }
 
 export async function fetchChessComGames(username, year, month) {
   try {
+    log.debug(`Cecelia: Fetching ${username}'s games.`);
     return await chessAPI.getPlayerCompleteMonthlyArchives(username, year, month)
   } catch (err) {
-    log.error(`Chess.com games API error: ${err.message}`)
+    log.error(`Cecelia: API error: ${err.message}`)
     return null
   }
 }
 
 export async function fetchChessComRecentGames(username, limit = 10) {
   try {
+    log.debug(`Cecelia: Fetching recent games for ${username}`);
     const now = new Date()
     const archives = await chessAPI.getPlayerGameArchives(username)
     
@@ -55,7 +59,7 @@ export async function fetchChessComRecentGames(username, limit = 10) {
         site: 'chess.com'
       }))
   } catch (err) {
-    log.error(`Recent games error: ${err.message}`)
+    log.error(`Cecelia: API error: ${err.message}`)
     return []
   }
 }
