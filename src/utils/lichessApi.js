@@ -3,43 +3,38 @@ import { log } from '../init';
 
 const BASE_URL = 'https://lichess.org';
 
-/**
- * Helper function to get request headers, including optional OAuth token.
- * @param {string|null} token - Optional OAuth token for authenticated requests.
- * @returns {Object} Headers object.
- */
-function getHeaders(token = null) {
-  const headers = {
-    'Accept': 'application/json',
-  };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  return headers;
-}
 
 /**
  * General API request handler for Lichess API.
- * Handles GET, POST, etc., with query params, body, and token.
+ * Handles GET, POST, etc., with query params, body, token, and custom headers.
  * @param {string} method - HTTP method (GET, POST, etc.).
  * @param {string} path - API path (e.g., '/api/account').
  * @param {Object} queryParams - Query parameters as key-value object.
  * @param {Object|string} body - Body data (object for json/form, string for text).
  * @param {string|null} token - Optional OAuth token.
- * @param {string} bodyType - 'json', 'form', or 'text' (default: 'json').
- * @returns {Promise<any>} Response data (JSON, text, or null on error).
+ * @param {string} bodyType - 'json', 'form', 'text', or 'pgn'.
+ * @param {Object} [headers={}] - Optional additional headers.
+ * @returns {Promise<any>} Response data (JSON, text, PGN, or null on error).
  */
-async function apiRequest(method, path, queryParams = {}, body = null, token = null, bodyType = 'json') {
+async function apiRequest(
+  method,
+  path,
+  queryParams = {},
+  body = null,
+  token = null,
+  bodyType = 'json',
+  headers = {}
+) {
   const url = new URL(path, BASE_URL);
   Object.entries(queryParams).forEach(([key, value]) => {
     if (value !== undefined && value !== null) {
       url.searchParams.append(key, value);
     }
   });
-
+ const mergedHeaders = { ...headers };
   const options = {
     method,
-    headers: getHeaders(token),
+    headers: mergedHeaders,
   };
 
   if (body && (method === 'POST' || method === 'PUT')) {
@@ -54,6 +49,10 @@ async function apiRequest(method, path, queryParams = {}, body = null, token = n
     } else if (bodyType === 'text') {
       options.body = body;
       options.headers['Content-Type'] = 'text/plain';
+    } else if (bodyType === 'pgn') {
+      options.body = body;
+      options.headers['Content-Type'] = 'application/x-chess-pgn';
+      options.headers['Accept'] = 'application/x-chess-pgn';
     }
   }
 
@@ -63,6 +62,8 @@ async function apiRequest(method, path, queryParams = {}, body = null, token = n
       throw new Error(`${method} ${path} failed: ${response.status} ${response.statusText}`);
     }
     const contentType = response.headers.get('content-type');
+    log.debug(`Lila: ${method} ${url}`)
+    log.debug(`Lila: Response: ${response.status} ${response.statusText}, Content-Type: ${contentType}`);
     if (contentType?.includes('application/json') || contentType?.includes('application/vnd.lichess.v3+json')) {
       return await response.json();
     } else if (contentType?.includes('application/x-ndjson')) {
@@ -480,12 +481,9 @@ export async function getTeamSwiss(teamId, max = 100) {
  * @param {boolean} [pgnInJson=true] - PGN in JSON.
  * @returns {Promise<string|null>} The PGN string or null.
  */
-export async function fetchGamePgn(gameId, clocks = false, evals = false, moves = true, pgnInJson = true) {
-  if (!isValidGameId(gameId)) {
-    log.error('Invalid game ID format:', gameId);
-    return null;
-  }
-  return apiRequest('GET', `/game/export/${gameId}`, { clocks, evals, moves, pgnInJson });
+export async function fetchLichessPgn(gameId, clocks = true, evals = true, moves = true) {
+  log.debug(`Fetching Lichess PGN for game ID: ${gameId}`);
+  return apiRequest('GET', `/game/export/${gameId}.pgn`, { clocks, evals, moves }, 'string', null, 'pgn'); 
 }
 
 /**
@@ -524,13 +522,9 @@ export async function fetchUserGamesPgn(username, max = 10) {
  * @param {string} url - The Lichess URL.
  * @returns {string|null} The game ID or null.
  */
-export function extractGameId(url) {
-  url = String(url).trim();
-  let match = url.match(/lichess\.org\/game\/export\/([a-zA-Z0-9]{8})/);
-  if (match) return match[1];
-  match = url.match(/lichess\.org\/([a-zA-Z0-9]{8})/);
-  if (match) return match[1];
-  return null;
+export async function extractLichessId(url) {
+	const m = url.match(/lichess\.org\/([a-z0-9\-]{6,})/i);
+	return m ? m[1] : null;
 }
 
 /**
@@ -550,5 +544,5 @@ export function trimGameId(id) {
  * @returns {boolean} True if valid.
  */
 export function isValidGameId(gameId) {
-  return /^[a-zA-Z0-9]{8}$/.test(gameId);
+  return /^[a-z0-9\-]{6,}$/.test(gameId);
 }

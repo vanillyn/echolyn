@@ -25,7 +25,7 @@ export async function analyzePosition(fen, { searchTime = 2000 } = {}) {
     sf.stdout.on('data', (data) => {
       buffer += data.toString()
       const lines = buffer.split('\n')
-      buffer = lines.pop() || '' // Keep incomplete line
+      buffer = lines.pop() || ''
       
       for (const line of lines) {
         if (line.startsWith('info') && line.includes('score')) {
@@ -68,7 +68,6 @@ export async function analyzePosition(fen, { searchTime = 2000 } = {}) {
       }
     })
 
-    // Send commands
     sf.stdin.write('uci\n')
     sf.stdin.write(`position fen ${fen}\n`)  
     sf.stdin.write(`go movetime ${searchTime}\n`)

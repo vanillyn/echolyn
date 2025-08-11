@@ -1,8 +1,9 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { Chess } = require('chess.js');
-const { drawBoard } = require('../utils/drawBoard');
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { Chess } from 'chess.js';
+import { drawBoard } from '../utils/drawBoard';
+import { hexToRgba, isCheckmate, isInCheck } from '../utils/utils';
 
-module.exports = {
+export default {
 	data: new SlashCommandBuilder()
 		.setName('position')
 		.setDescription('Generate a chessboard image based on a position from a FEN string.')
@@ -72,13 +73,6 @@ module.exports = {
 				'Invalid FEN string. Please provide a valid chess position in FEN format.'
 			);
 		}
-		const hexToRgba = hex => {
-			if (!hex || !/^#[0-9A-F]{6}$/i.test(hex)) return null;
-			const r = parseInt(hex.slice(1, 3), 16);
-			const g = parseInt(hex.slice(3, 5), 16);
-			const b = parseInt(hex.slice(5, 7), 16);
-			return { r, g, b, alpha: 1 };
-		};
 
 		const options = {
 			lightColor: hexToRgba(interaction.options.getString('light_color')),
@@ -88,43 +82,13 @@ module.exports = {
 			pieceSet: interaction.options.getString('piece_set') || 'pixel',
 		};
 
-		const isInCheck = chess.inCheck();
-		const isCheckmate = chess.isCheckmate();
-		let checkSquare = null;
-
-		if (isInCheck) {
-			const turn = chess.turn();
-			const board = chess.board();
-			for (let rank = 0; rank < 8; rank++) {
-				for (let file = 0; file < 8; file++) {
-					const square = board[rank][file];
-					if (square && square.type === 'k' && square.color === turn) {
-						checkSquare = { rank, file };
-						break;
-					}
-				}
-				if (checkSquare) break;
-			}
-		}
-
-		var victor = null;
-		if (isCheckmate) {
-			options.pieceColorOverride = { r: 128, g: 128, b: 128, alpha: 1 };
-			options.rotateKing = true;
-			victor = chess.turn() === 'w' ? 'Black' : 'White';
-		}
-
 		try {
-			const buffer = await drawBoard(fen, checkSquare, isCheckmate, options);
+			const buffer = await drawBoard(fen, isInCheck(chess), isCheckmate(chess), options);
 			const embed = new EmbedBuilder()
 				.setTitle(
-					`Chess Position (${
-						isCheckmate
-							? `${victor} wins by checkmate`
-							: isInCheck
-							? 'Check'
-							: 'Ongoing'
-					})`
+					`Chess Position ${
+						isCheckmate(chess).checkmate ? `(${isCheckmate(chess).victor} wins by checkmate)` : isInCheck(chess) ? '(Check)' : ''
+					}`
 				)
 				.setDescription(`Chess position from \`${fen}\``)
 				.setImage('attachment://chessboard.png')
@@ -135,7 +99,7 @@ module.exports = {
 			});
 		} catch (error) {
 			console.error(error);
-			await interaction.editReply('An error occurred while generating the chessboard image.');
+			await interaction.editReply('An error occurred while rendering the chess board.');
 		}
 	},
 };

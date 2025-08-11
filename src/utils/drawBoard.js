@@ -1,7 +1,7 @@
 import sharp from 'sharp';
 import path from 'node:path';
 
-const squareSize = 32;
+const squareSize = 64;
 const boardSize = squareSize * 8;
 
 const coordSize = 20;
@@ -331,53 +331,70 @@ export async function drawBoard(fen, options = {}) {
 	overlays.push({ input: watermarkSvg, left: fullWidth - watermarkWidth - 6, top: 12 });
 
 	if (showEval) {
-		let ev = Number(options.eval);
-		if (!Number.isFinite(ev)) ev = 0;
-		ev = clamp(ev, -10, 10);
-		const whitePercent = (ev + 10) / 20;
-		const whiteHeight = Math.round(boardSize * whitePercent);
-		const blackHeight = boardSize - whiteHeight;
-
-		const evalLeft = boardSize;
-		const evalTop = borderTop;
-
-		if (blackHeight > 0) {
-			overlays.push({
-				input: {
-					create: {
-						width: evalBarWidth,
-						height: blackHeight,
-						channels: 4,
-						background: { r: 80, g: 80, b: 80, alpha: 1 },
-					},
-				},
-				left: evalLeft,
-				top: evalTop,
-			});
-		}
-
-		if (whiteHeight > 0) {
-			const whiteTop = evalTop + boardSize - whiteHeight;
-			overlays.push({
-				input: {
-					create: {
-						width: evalBarWidth,
-						height: whiteHeight,
-						channels: 4,
-						background: { r: 240, g: 240, b: 240, alpha: 1 },
-					},
-				},
-				left: evalLeft,
-				top: whiteTop,
-			});
-		}
-
-		const evalLabel =
-			(ev >= 0 ? '+' : '') + (Math.abs(ev) < 10 ? ev.toFixed(2) : ev.toString());
-		const evalSvg = svgTextBuffer(evalLabel, evalBarWidth, 18, { fontSize: 12, fill: '#eee' });
-		const evalLabelY = borderTop + boardSize + 4;
-		overlays.push({ input: evalSvg, left: evalLeft, top: evalLabelY });
+	let ev = Number(options.eval);
+	if (!Number.isFinite(ev)) ev = 0;
+	
+	// Handle mate and large evaluations
+	let whitePercent;
+	if (ev > 10) {
+		whitePercent = 1; // White completely winning
+	} else if (ev < -10) {
+		whitePercent = 0; // Black completely winning
+	} else {
+		whitePercent = (ev + 10) / 20;
 	}
+	
+	const whiteHeight = Math.round(boardSize * whitePercent);
+	const blackHeight = boardSize - whiteHeight;
+
+	const evalLeft = boardSize;
+	const evalTop = borderTop;
+
+	if (blackHeight > 0) {
+		overlays.push({
+			input: {
+				create: {
+					width: evalBarWidth,
+					height: blackHeight,
+					channels: 4,
+					background: { r: 80, g: 80, b: 80, alpha: 1 },
+				},
+			},
+			left: evalLeft,
+			top: evalTop,
+		});
+	}
+
+	if (whiteHeight > 0) {
+		const whiteTop = evalTop + boardSize - whiteHeight;
+		overlays.push({
+			input: {
+				create: {
+					width: evalBarWidth,
+					height: whiteHeight,
+					channels: 4,
+					background: { r: 240, g: 240, b: 240, alpha: 1 },
+				},
+			},
+			left: evalLeft,
+			top: whiteTop,
+		});
+	}
+
+	let evalLabel;
+	if (Math.abs(ev) >= 100) {
+		const mateIn = Math.abs(ev) - 100;
+		evalLabel = ev > 0 ? `M${mateIn}` : `M-${mateIn}`;
+	} else if (Math.abs(ev) > 10) {
+		evalLabel = ev > 0 ? '+99' : '-99';
+	} else {
+		evalLabel = (ev >= 0 ? '+' : '') + ev.toFixed(2);
+	}
+	
+	const evalSvg = svgTextBuffer(evalLabel, evalBarWidth, 18, { fontSize: 12, fill: '#eee' });
+	const evalLabelY = borderTop + boardSize + 4;
+	overlays.push({ input: evalSvg, left: evalLeft, top: evalLabelY });
+}
 
 	canvas = canvas.composite(overlays);
 
