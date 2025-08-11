@@ -21,7 +21,7 @@ class Database {
         lichess_username TEXT,
         lichess_token TEXT,
         chesscom_username TEXT,
-        echolyn_rating INTEGER DEFAULT 1200,
+        echolyn_rating INTEGER DEFAULT 1500,
         echolyn_games INTEGER DEFAULT 0,
         echolyn_wins INTEGER DEFAULT 0,
         echolyn_losses INTEGER DEFAULT 0,
@@ -96,7 +96,7 @@ class Database {
     else if (gameResult === 'draw') newDraws++
     
     const totalGames = profile.echolyn_games + 1
-    const expectedScore = 1 / (1 + Math.pow(10, (1200 - oldRating) / 400))
+    const expectedScore = 1 / (1 + Math.pow(10, (1500 - oldRating) / 400))
     const k = totalGames < 30 ? 40 : oldRating < 2100 ? 20 : 10
     
     let score = 0

@@ -109,51 +109,70 @@ export default {
       await interaction.editReply({ embeds: [embed] })
 
     } else if (subcommand === 'echolyn') {
-      const echolyn = profile.echolyn
+      try {
+        const profile = userManager.getProfile(userId)
+        const echolyn = (await profile).echolyn
 
-      const embed = new EmbedBuilder()
-        .setTitle(`${targetUser.displayName} - echolyn`)
-        .setColor(0x5865f2)
-        .addFields(
-          { name: 'rating', value: echolyn.rating.toString(), inline: true },
-          { name: 'games', value: echolyn.games.toString(), inline: true },
-          { name: 'wins', value: echolyn.wins.toString(), inline: true },
-          { name: 'losses', value: echolyn.losses.toString(), inline: true },
-          { name: 'draws', value: echolyn.draws.toString(), inline: true },
-          { name: 'win rate', value: echolyn.games > 0 ? `${((echolyn.wins / echolyn.games) * 100).toFixed(1)}%` : '0%', inline: true }
-        )
+        const embed = new EmbedBuilder()
+          .setTitle(`${targetUser.displayName} - echolyn`)
+          .setColor(0x5865f2)
+          .addFields(
+            { name: 'rating', value: echolyn.games === 0 ? `${echolyn.rating}?` : echolyn.rating.toString(), inline: true },
+            { name: 'games', value: echolyn.games.toString(), inline: true },
+            { name: 'wins', value: echolyn.wins.toString(), inline: true },
+            { name: 'losses', value: echolyn.losses.toString(), inline: true },
+            { name: 'draws', value: echolyn.draws.toString(), inline: true },
+            { name: 'win rate', value: echolyn.games > 0 ? `${((echolyn.wins / echolyn.games) * 100).toFixed(1)}%` : '0%', inline: true }
+          )
 
-      await interaction.editReply({ embeds: [embed] })
+        if (echolyn.games === 0) {
+          embed.setDescription('unrated - play some games to get a rating!')
+        }
+
+        await interaction.editReply({ embeds: [embed] })
+      } catch (err) {
+        await interaction.editReply({
+          content: 'error loading profile - please try again'
+        })
+      }
 
     } else if (subcommand === 'all') {
-      const embed = new EmbedBuilder()
-        .setTitle(`${targetUser.displayName} - all profiles`)
-        .setColor(0x0099ff)
+      try {
+        const embed = new EmbedBuilder()
+          .setTitle(`${targetUser.displayName} - all profiles`)
+          .setColor(0x0099ff)
 
-      let description = ''
+        let description = ''
 
-      if (profile.lichess) {
-        const data = await fetchUserProfile(profile.lichess.username)
-        if (data) {
-          description += `**lichess**: ${data.username} (${data.perfs?.blitz?.rating || 'unrated'} blitz)\n`
+        if (profile.lichess) {
+          const data = await fetchUserProfile(profile.lichess.username)
+          if (data) {
+            description += `**lichess**: ${data.username} (${data.perfs?.blitz?.rating || 'unrated'} blitz)\n`
+          }
         }
-      }
 
-      if (profile.chesscom) {
-        const data = await fetchChessComProfile(profile.chesscom.username)
-        if (data?.profile) {
-          description += `**chess.com**: ${data.profile.username} (${data.stats?.chess_blitz?.last?.rating || 'unrated'} blitz)\n`
+        if (profile.chesscom) {
+          const data = await fetchChessComProfile(profile.chesscom.username)
+          if (data?.profile) {
+            description += `**chess.com**: ${data.profile.username} (${data.stats?.chess_blitz?.last?.rating || 'unrated'} blitz)\n`
+          }
         }
+
+        const echolyn = profile.echolyn
+        const ratingDisplay = echolyn.games === 0 ? `${echolyn.rating}?` : echolyn.rating.toString()
+        description += `**echolyn**: ${ratingDisplay} rating (${echolyn.games} games)`
+
+        if (!profile.lichess && !profile.chesscom && echolyn.games === 0) {
+          description = 'no accounts linked - use `/login` to connect your profiles'
+        }
+
+        embed.setDescription(description)
+        await interaction.editReply({ embeds: [embed] })
+      } catch (err) {
+        await interaction.editReply({
+          content: 'error loading profiles - please try again'
+        })
       }
-
-      description += `**echolyn**: ${profile.echolyn.rating} rating (${profile.echolyn.games} games)`
-
-      if (!profile.lichess && !profile.chesscom && profile.echolyn.games === 0) {
-        description = 'no accounts linked - use `/login` to connect your profiles'
-      }
-
-      embed.setDescription(description)
-      await interaction.editReply({ embeds: [embed] })
     }
   }
 }
