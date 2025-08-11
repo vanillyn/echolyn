@@ -15,7 +15,7 @@ import {
 	fetchChessComPgn,
 } from '../utils/parsePGN.js';
 
-import { extractLichessId, fetchLichessPgn } from '../utils/lichessApi.js';
+import { extractLichessId, fetchLichessPgn } from '../utils/api/lichessApi.js';
 
 export default {
 	data: new SlashCommandBuilder()

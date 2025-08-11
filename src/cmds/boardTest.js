@@ -6,7 +6,7 @@ import { hexToRgba, isCheckmate, isInCheck } from '../utils/utils';
 export default {
 	data: new SlashCommandBuilder()
 		.setName('position')
-		.setDescription('Generate a chessboard image based on a position from a FEN string.')
+		.setDescription('generate a chess board image based on a position from a FEN string')
 		.addStringOption(option =>
 			option
 				.setName('fen')

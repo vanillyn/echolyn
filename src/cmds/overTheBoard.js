@@ -9,7 +9,7 @@ import {
   TextInputBuilder,
   TextInputStyle
 } from 'discord.js'
-import { GameManager } from '../utils/gameManager.js'
+import { GameManager } from '../utils/game/gameManager.js'
 import { drawBoard } from '../utils/drawBoard.js'
 
 export default {

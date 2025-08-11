@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import { log } from '../init';
+import { log } from '../../init.js';
 
 const BASE_URL = 'https://lichess.org';
 

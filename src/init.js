@@ -15,18 +15,38 @@ export const log = pino({
   level: process.env.NODE_ENV === 'production' ? 'info' : 'debug'
 })
 
+function getAllJsFiles(dir, fileList = []) {
+  const files = fs.readdirSync(dir)
+  
+  for (const file of files) {
+    const fullPath = path.join(dir, file)
+    const stat = fs.statSync(fullPath)
+    
+    if (stat.isDirectory()) {
+      getAllJsFiles(fullPath, fileList)
+    } else if (file.endsWith('.js')) {
+      fileList.push(fullPath)
+    }
+  }
+  
+  return fileList
+}
+
 export async function initClient(client) {
   client.commands = new Collection()
 
   const cmdsPath = path.join(process.cwd(), 'src', 'cmds')
-  const cmdFiles = fs.readdirSync(cmdsPath).filter(f => f.endsWith('.js'))
+  const cmdFiles = getAllJsFiles(cmdsPath)
   const cmdData = []
 
-  for (const file of cmdFiles) {
-    const cmd = (await import(`./cmds/${file}`)).default
+  for (const filePath of cmdFiles) {
+    const relativePath = path.relative(path.join(process.cwd(), 'src'), filePath)
+    const importPath = `./${relativePath.replace(/\\/g, '/')}`
+    
+    const cmd = (await import(importPath)).default
     client.commands.set(cmd.data.name, cmd)
     cmdData.push(cmd.data.toJSON())
-    log.debug(`loaded command: ${cmd.data.name}`)
+    log.debug(`loaded command: ${cmd.data.name} from ${relativePath}`)
   }
 
   const rest = new REST({ version: '10' }).setToken(config.token)
