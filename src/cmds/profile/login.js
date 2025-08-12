@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js'
 import { userManager } from '../../data/userData.js'
-import { fetchUserProfile } from '../../utils/api/lichessApi.js'
+import { fetchUserProfile, getUserPerfStats } from '../../utils/api/lichessApi.js'
 import { fetchChessComProfile } from '../../utils/api/chesscomApi.js'
 
 export default {
@@ -71,7 +71,7 @@ export default {
         )
         .setThumbnail(data.profile.avatar || null)
 
-      await interaction.editReply({ embeds: [embed], flags: MessageFlags.Ephemeral })
+      await interaction.editReply({ embeds: [embed] })
     }
   }
 }

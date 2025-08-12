@@ -314,7 +314,7 @@ export async function drawBoard(fen, options = {}) {
 
 		const bottomSvgText = `<svg xmlns="http://www.w3.org/2000/svg" width="${playerWidth}" height="${playerAreaHeight}">
       <style>.t{ fill:#ddd; font-family: Arial, sans-serif; font-size:${nameFontSize}px }</style>
-      <text x="6" y="50%" dominant-baseline="middle" text-anchor="start" class="t">${escapeXml(topName)}</text>
+      <text x="6" y="50%" dominant-baseline="middle" text-anchor="start" class="t">${escapeXml(bottomName)}</text>
       <text x="${
 			playerWidth - 6
 		}" y="50%" dominant-baseline="middle" text-anchor="end" class="t">${bottomClock}</text>

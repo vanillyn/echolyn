@@ -5,23 +5,22 @@ const BASE_URL = 'https://lichess.org';
 
 
 /**
- * General API request handler for Lichess API.
- * Handles GET, POST, etc., with query params, body, token, and custom headers.
- * @param {string} method - HTTP method (GET, POST, etc.).
- * @param {string} path - API path (e.g., '/api/account').
- * @param {Object} queryParams - Query parameters as key-value object.
- * @param {Object|string} body - Body data (object for json/form, string for text).
- * @param {string|null} token - Optional OAuth token.
+ * Makes an API request to Lichess.
+ * @param {string} method - HTTP method
+ * @param {string} path - API path (find api path and params at https://lichess.org/api)
+ * @param {Object} queryParams - Query parameters.
+ * @param {Object|string} body - Body data.
+ * @param {string|null} token - OAuth token. 
  * @param {string} bodyType - 'json', 'form', 'text', or 'pgn'.
- * @param {Object} [headers={}] - Optional additional headers.
- * @returns {Promise<any>} Response data (JSON, text, PGN, or null on error).
+ * @param {Object} [headers={}] - Additional headers.
+ * @returns {Promise<any>} 
  */
 async function apiRequest(
   method,
   path,
   queryParams = {},
   body = null,
-  token = null,
+  token = null, // implement token handling eventually with /login
   bodyType = 'json',
   headers = {}
 ) {

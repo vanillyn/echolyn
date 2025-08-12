@@ -20,7 +20,7 @@ export default {
     const targetUser = interaction.options.getUser('user') || interaction.user
     const limit = interaction.options.getInteger('limit') || 10
     const userId = targetUser.id
-    const profile = userManager.getProfile(userId)
+    const profile = await userManager.getProfile(userId)
 
     if (!profile.lichess && !profile.chesscom) {
       return interaction.editReply({
