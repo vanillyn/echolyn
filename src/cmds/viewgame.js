@@ -10,12 +10,8 @@ import {
 import { drawBoard } from '../utils/drawBoard.js';
 import { analyzePosition } from '../utils/stockfish.js';
 import { log } from '../init.js';
-import {
-	buildFensAndMetaFromPgn,
-	extractChessComId,
-	fetchChessComPgn,
-} from '../utils/parsePGN.js';
-
+import { buildFensAndMetaFromPgn } from '../utils/parsePGN.js';
+import { extractChessComId, fetchChessComPgn } from '../utils/api/chesscomApi.js';
 import { extractLichessId, fetchLichessPgn } from '../utils/api/lichessApi.js';
 
 export default {
@@ -289,7 +285,10 @@ async function processPgn(interaction, pgn) {
 					await i.editReply({ embeds: [next.embed], files: [next.attachment] });
 				} catch (error) {
 					log.error(`Stockfish evaluation error: ${error}`, error);
-					await i.followUp({ content: 'Failed to evaluate position', flags: MessageFlags.Ephemeral });
+					await i.followUp({
+						content: 'Failed to evaluate position',
+						flags: MessageFlags.Ephemeral,
+					});
 				}
 				return;
 			} else if (i.customId === 'movelist') {
@@ -336,7 +335,10 @@ async function processPgn(interaction, pgn) {
 		} catch (err) {
 			console.error('viewer collect err', err);
 			try {
-				await i.reply({ content: 'error handling interaction', flags: MessageFlags.Ephemeral });
+				await i.reply({
+					content: 'error handling interaction',
+					flags: MessageFlags.Ephemeral,
+				});
 			} catch {}
 		}
 	});

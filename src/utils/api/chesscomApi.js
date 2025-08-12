@@ -1,6 +1,5 @@
 import ChessWebAPI from 'chess-web-api'
 import { log } from '../../init.js'
-import { MessageFlags } from 'discord.js'
 
 const chessAPI = new ChessWebAPI()
 
@@ -62,4 +61,41 @@ export async function fetchChessComRecentGames(username, limit = 10) {
     log.error(`Cecelia: API error: ${err.message}`)
     return []
   }
+}
+
+
+export function extractChessComId(url) {
+	const m = url.match(/chess\.com\/game\/(?:live|daily)\/(\d+)/i);
+	return m ? m[1] : null;
+}
+
+export async function fetchChessComPgn(gameId) {
+	if (ChessWebAPI) {
+		try {
+			const api = new ChessWebAPI();
+			const res = await api.getGameById(gameId);
+			if (res && res.body && res.body.pgn) return res.body.pgn;
+			if (res && res.pgn) return res.pgn;
+		} catch (e) {
+      log.error('Error fetching chess.com PGN:', e);
+      return null;
+		}
+	}
+
+	try {
+		const pageUrl = `https://www.chess.com/game/live/${gameId}`;
+		const res = await fetch(pageUrl);
+		if (!res.ok) return null;
+		const html = await res.text();
+		const pre = html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
+		if (pre) {
+			const candidate = pre[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
+			if (candidate.toLowerCase().includes('[event')) return candidate;
+		}
+	} catch (e) {
+    log.error('Error fetching chess.com PGN:', e);
+    return null;
+	}
+
+	return null;
 }
