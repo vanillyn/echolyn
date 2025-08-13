@@ -11,7 +11,7 @@ import {
   MessageFlags,
 } from 'discord.js'
 import { GameManager } from '../utils/game/gameManager.js'
-import { drawBoard } from '../utils/drawBoard.js' // Updated import
+import { drawBoard } from '../utils/drawBoard.js'
 
 export default {
   data: new SlashCommandBuilder()
@@ -112,7 +112,6 @@ export default {
   async buildGameMessage(game, requestUserId = null) {
     const state = game.getGameState()
     
-    // Determine whose config to use (prioritize current player, fallback to requester)
     const currentPlayerId = game.getCurrentPlayer()
     const configUserId = (typeof currentPlayerId === 'string' && !['stockfish', 'random'].includes(currentPlayerId)) 
       ? currentPlayerId 
@@ -186,7 +185,6 @@ export default {
       desc += `${state.isCheck ? 'Check! ' : ''}**${turnColor} to move**\n`
       desc += `Current player: ${currentPlayer}`
       
-      // Show evaluation if available
       if (game.lastEvaluation !== undefined) {
         const sfeval = game.lastEvaluation
         const evalText = Math.abs(sfeval) >= 100 

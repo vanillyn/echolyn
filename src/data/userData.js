@@ -2,6 +2,7 @@ import { database } from './database.js'
 
 export class UserManager {
   constructor() {
+    this.pendingAuths = new Map()
     this.init()
   }
 
@@ -14,7 +15,8 @@ export class UserManager {
     return {
       lichess: profile.lichess_username ? {
         username: profile.lichess_username,
-        token: profile.lichess_token
+        token: profile.lichess_token,
+        hasToken: !!profile.lichess_token
       } : null,
       chesscom: profile.chesscom_username ? {
         username: profile.chesscom_username
@@ -47,6 +49,29 @@ export class UserManager {
 
   async getLeaderboard(limit = 10) {
     return await database.getLeaderboard(limit)
+  }
+
+  storePendingAuth(state, data) {
+    this.pendingAuths.set(state, { ...data, timestamp: Date.now() })
+    setTimeout(() => this.pendingAuths.delete(state), 10 * 60 * 1000)
+  }
+
+  getPendingAuth(state) {
+    const auth = this.pendingAuths.get(state)
+    if (auth) {
+      this.pendingAuths.delete(state)
+      return auth
+    }
+    return null
+  }
+
+  async updateLichessToken(userId, token) {
+    const profile = await database.getProfile(userId)
+    if (profile.lichess_username) {
+      await database.setLichess(userId, profile.lichess_username, token)
+      return true
+    }
+    return false
   }
 }
 

@@ -4,5 +4,9 @@ export default {
   token: process.env.BOT_TOKEN,
   clientId: process.env.BOT_ID,
   name: process.env.BOT_NAME,
-  environment: process.env.NODE_ENV
+  environment: process.env.NODE_ENV,
+  api_name: {
+    lichess: process.env.LICHESS_API_NAME,
+    chesscom: process.env.CHESSCOM_API_NAME
+  }
 }
