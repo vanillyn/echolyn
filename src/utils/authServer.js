@@ -4,6 +4,7 @@ import { lichessAuth } from './api/lichessAuth.js'
 import { log } from '../init.js'
 import config from '../../config.js'
 
+const API_NAME = "auth"
 export class AuthServer {
   constructor() {
     this.server = null
@@ -61,7 +62,7 @@ export class AuthServer {
     })
 
     this.server.listen(this.port, () => {
-      log.info(`OAuth callback server running on http://localhost:${this.port}`)
+      log.debug(`${API_NAME}: OAuth server running on localhost:${this.port}`)
     })
   }
 
@@ -86,20 +87,16 @@ export class AuthServer {
             <title>Lichess Authorization Complete</title>
             <style>
               body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #1e1e2e; color: #cdd6f4; }
-              .success { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 500px; margin: 0 auto; }
               .checkmark { color: #4CAF50; font-size: 48px; }
-              .username { color: #666; margin: 20px 0; }
-              .close-text { color: #999; margin-top: 20px; }
             </style>
           </head>
           <body>
-            <div class="success">
-              <div class="checkmark">✓</div>
+            <div>
+              <div class="checkmark">${config.name}</div>
               <h1>Authorization Successful!</h1>
-              <p>Your Lichess account <strong>${result.profile.id}</strong> has been successfully linked to Echolyn.</p>
-              <div class="username">Welcome, ${result.profile.username || result.profile.id}!</div>
-              <p>You can now close this tab and return to Discord.</p>
-              <div class="close-text">This window will close automatically in 5 seconds.</div>
+              <p>Your Lichess account <strong>${result.profile.id}</strong> has been successfully linked to ${config.name}.</p>
+              <div>Welcome, ${result.profile.username || result.profile.id}!</div>
+              <p>You can now return to Discord.</p>
             </div>
             <script>
               setTimeout(() => window.close(), 5000);
@@ -108,7 +105,7 @@ export class AuthServer {
         </html>
       `)
 
-      log.info(`OAuth success for user ${result.userId}: linked to Lichess user ${result.profile.id}`)
+      log.debug(`${API_NAME}: ${result.userId} linked to Lichess user ${result.profile.id}`)
 
     } catch (error) {
       log.error('OAuth callback error:', error)
@@ -141,7 +138,7 @@ export class AuthServer {
     if (this.server) {
       this.server.close()
       this.server = null
-      log.info('OAuth callback server stopped')
+      log.debug('OAuth callback server stopped')
     }
   }
 }

@@ -7,7 +7,7 @@ export class LichessAuth {
   constructor() {
     this.clientId = process.env.LICHESS_CLIENT_ID || 'echolyn-discord-bot'
     this.redirectUri = process.env.LICHESS_REDIRECT_URI || 'http://localhost:3000/auth/lichess/callback'
-    this.scopes = ['preference:read', 'game:read', 'challenge:read', 'challenge:write']
+    this.scopes = ['preference:read', 'board:play', 'study:read', 'study:write', 'challenge:read', 'challenge:write', 'follow:read', 'follow:write']
   }
 
   generateAuthUrl(userId) {
@@ -61,7 +61,6 @@ export class LichessAuth {
       }
 
       const tokenData = await response.json()
-      log.debug('Received Lichess token data:', tokenData)
 
       const profile = await this.getUserProfile(tokenData.access_token)
       if (!profile) {
