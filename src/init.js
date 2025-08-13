@@ -3,6 +3,8 @@ import path from 'node:path'
 import { Collection, REST, Routes } from 'discord.js'
 import config from '../config.js'
 import pino from 'pino'
+import { userManager } from './data/userData.js'
+import { serverConfig } from './data/serverData.js'
 
 export const log = pino({
   transport: {
@@ -15,7 +17,7 @@ export const log = pino({
   level: process.env.NODE_ENV === 'production' ? 'info' : 'debug'
 })
 
-function getAllJsFiles(dir, fileList = []) {
+function getFiles(dir, fileList = []) {
   const files = fs.readdirSync(dir)
   
   for (const file of files) {
@@ -23,7 +25,7 @@ function getAllJsFiles(dir, fileList = []) {
     const stat = fs.statSync(fullPath)
     
     if (stat.isDirectory()) {
-      getAllJsFiles(fullPath, fileList)
+      getFiles(fullPath, fileList)
     } else if (file.endsWith('.js')) {
       fileList.push(fullPath)
     }
@@ -33,10 +35,13 @@ function getAllJsFiles(dir, fileList = []) {
 }
 
 export async function initClient(client) {
+  await userManager.init()
+  await serverConfig.init()
+  
   client.commands = new Collection()
 
   const cmdsPath = path.join(process.cwd(), 'src', 'cmds')
-  const cmdFiles = getAllJsFiles(cmdsPath)
+  const cmdFiles = getFiles(cmdsPath)
   const cmdData = []
 
   for (const filePath of cmdFiles) {
@@ -46,7 +51,7 @@ export async function initClient(client) {
     const cmd = (await import(importPath)).default
     client.commands.set(cmd.data.name, cmd)
     cmdData.push(cmd.data.toJSON())
-    log.debug(`loaded command: ${cmd.data.name} from ${relativePath}`)
+    log.debug(`loaded ${cmd.data.name}. (${relativePath})`)
   }
 
   const rest = new REST({ version: '10' }).setToken(config.token)

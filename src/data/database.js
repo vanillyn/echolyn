@@ -1,6 +1,7 @@
 import sqlite3 from 'sqlite3'
 import { open } from 'sqlite'
 import { log } from '../init.js'
+import { eloSystem } from './elo.js'
 
 class Database {
   constructor() {
@@ -21,11 +22,12 @@ class Database {
         lichess_username TEXT,
         lichess_token TEXT,
         chesscom_username TEXT,
-        echolyn_rating INTEGER DEFAULT 1500,
+        echolyn_rating INTEGER DEFAULT 1200,
         echolyn_games INTEGER DEFAULT 0,
         echolyn_wins INTEGER DEFAULT 0,
         echolyn_losses INTEGER DEFAULT 0,
         echolyn_draws INTEGER DEFAULT 0,
+        is_rated BOOLEAN DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
@@ -33,18 +35,38 @@ class Database {
       CREATE TABLE IF NOT EXISTS game_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         discord_id TEXT,
+        opponent_id TEXT,
         game_type TEXT,
         result TEXT,
         rating_before INTEGER,
         rating_after INTEGER,
-        opponent TEXT,
+        rating_change INTEGER,
+        opponent_rating_before INTEGER,
+        opponent_rating_after INTEGER,
+        opponent_rating_change INTEGER,
         pgn TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (discord_id) REFERENCES user_profiles (discord_id)
       );
+
+      CREATE TABLE IF NOT EXISTS server_config (
+        guild_id TEXT PRIMARY KEY,
+        sm_role_id TEXT,
+        sm_threshold INTEGER DEFAULT 1800,
+        champion_role_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS server_masters (
+        guild_id TEXT,
+        user_id TEXT,
+        promoted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (guild_id, user_id)
+      );
     `)
 
-    log.info('database initialized')
+    log.debug('database initialized')
   }
 
   async getProfile(discordId) {
@@ -83,55 +105,103 @@ class Database {
     `, [username, discordId])
   }
 
-  async updateEcholyn(discordId, gameResult, opponent = 'Unknown', pgn = null) {
-    const profile = await this.getProfile(discordId)
-    const oldRating = profile.echolyn_rating
-    
-    let newWins = profile.echolyn_wins
-    let newLosses = profile.echolyn_losses  
-    let newDraws = profile.echolyn_draws
-    
-    if (gameResult === 'win') newWins++
-    else if (gameResult === 'loss') newLosses++
-    else if (gameResult === 'draw') newDraws++
-    
-    const totalGames = profile.echolyn_games + 1
-    const expectedScore = 1 / (1 + Math.pow(10, (1500 - oldRating) / 400))
-    const k = totalGames < 30 ? 40 : oldRating < 2100 ? 20 : 10
-    
-    let score = 0
-    if (gameResult === 'win') score = 1
-    else if (gameResult === 'draw') score = 0.5
-    
-    const newRating = Math.round(oldRating + k * (score - expectedScore))
+  async updateEcholynRating(player1Id, player2Id, result, pgn = null) {
+    const player1Profile = await this.getProfile(player1Id)
+    const player2Profile = await this.getProfile(player2Id)
+
+    const player1Rating = player1Profile.echolyn_rating
+    const player2Rating = player2Profile.echolyn_rating
+
+    const eloChanges = eloSystem.calculateRatingChange(player1Rating, player2Rating, result)
+
+
+    const player1NewGames = player1Profile.echolyn_games + 1
+    let player1Wins = player1Profile.echolyn_wins
+    let player1Losses = player1Profile.echolyn_losses
+    let player1Draws = player1Profile.echolyn_draws
+
+    if (result === 'win') player1Wins++
+    else if (result === 'loss') player1Losses++
+    else if (result === 'draw') player1Draws++
+
+    const player1IsRated = eloSystem.isRated(player1NewGames)
 
     await this.db.run(`
       UPDATE user_profiles 
       SET echolyn_rating = ?, echolyn_games = ?, echolyn_wins = ?, 
-          echolyn_losses = ?, echolyn_draws = ?, updated_at = CURRENT_TIMESTAMP
+          echolyn_losses = ?, echolyn_draws = ?, is_rated = ?, updated_at = CURRENT_TIMESTAMP
       WHERE discord_id = ?
-    `, [newRating, totalGames, newWins, newLosses, newDraws, discordId])
+    `, [eloChanges.playerRating, player1NewGames, player1Wins, player1Losses, player1Draws, player1IsRated ? 1 : 0, player1Id])
+
+    const player2NewGames = player2Profile.echolyn_games + 1
+    let player2Wins = player2Profile.echolyn_wins
+    let player2Losses = player2Profile.echolyn_losses
+    let player2Draws = player2Profile.echolyn_draws
+
+    const opponentResult = result === 'win' ? 'loss' : result === 'loss' ? 'win' : 'draw'
+    if (opponentResult === 'win') player2Wins++
+    else if (opponentResult === 'loss') player2Losses++
+    else if (opponentResult === 'draw') player2Draws++
+
+    const player2IsRated = eloSystem.isRated(player2NewGames)
 
     await this.db.run(`
-      INSERT INTO game_history (discord_id, game_type, result, rating_before, rating_after, opponent, pgn)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [discordId, 'echolyn', gameResult, oldRating, newRating, opponent, pgn])
+      UPDATE user_profiles 
+      SET echolyn_rating = ?, echolyn_games = ?, echolyn_wins = ?, 
+          echolyn_losses = ?, echolyn_draws = ?, is_rated = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE discord_id = ?
+    `, [eloChanges.opponentRating, player2NewGames, player2Wins, player2Losses, player2Draws, player2IsRated ? 1 : 0, player2Id])
 
-    return { oldRating, newRating }
+    await this.db.run(`
+      INSERT INTO game_history (
+        discord_id, opponent_id, game_type, result, rating_before, rating_after, rating_change,
+        opponent_rating_before, opponent_rating_after, opponent_rating_change, pgn
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      player1Id, player2Id, 'echolyn-pvp', result, player1Rating, eloChanges.playerRating, eloChanges.playerChange,
+      player2Rating, eloChanges.opponentRating, eloChanges.opponentChange, pgn
+    ])
+
+    await this.db.run(`
+      INSERT INTO game_history (
+        discord_id, opponent_id, game_type, result, rating_before, rating_after, rating_change,
+        opponent_rating_before, opponent_rating_after, opponent_rating_change, pgn
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      player2Id, player1Id, 'echolyn-pvp', opponentResult, player2Rating, eloChanges.opponentRating, eloChanges.opponentChange,
+      player1Rating, eloChanges.playerRating, eloChanges.playerChange, pgn
+    ])
+
+    return {
+      player1: {
+        oldRating: player1Rating,
+        newRating: eloChanges.playerRating,
+        change: eloChanges.playerChange,
+        isRated: player1IsRated
+      },
+      player2: {
+        oldRating: player2Rating,
+        newRating: eloChanges.opponentRating,
+        change: eloChanges.opponentChange,
+        isRated: player2IsRated
+      }
+    }
   }
 
   async getGameHistory(discordId, limit = 10) {
     return await this.db.all(`
-      SELECT * FROM game_history 
-      WHERE discord_id = ? 
-      ORDER BY created_at DESC 
+      SELECT gh.*, up.discord_id as opponent_discord_id
+      FROM game_history gh
+      LEFT JOIN user_profiles up ON gh.opponent_id = up.discord_id
+      WHERE gh.discord_id = ? 
+      ORDER BY gh.created_at DESC 
       LIMIT ?
     `, [discordId, limit])
   }
 
   async getLeaderboard(limit = 10) {
     return await this.db.all(`
-      SELECT discord_id, echolyn_rating, echolyn_games, echolyn_wins, echolyn_losses, echolyn_draws
+      SELECT discord_id, echolyn_rating, echolyn_games, echolyn_wins, echolyn_losses, echolyn_draws, is_rated
       FROM user_profiles 
       WHERE echolyn_games > 0
       ORDER BY echolyn_rating DESC 

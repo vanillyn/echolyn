@@ -1,5 +1,7 @@
 import { Chess } from 'chess.js'
 import { analyzePosition } from '../stockfish.js'
+import { database } from '../../data/database.js'
+import { eloRole } from '../eloRole.js'
 
 export class ChessGame {
   constructor(channelId, players, options = {}) {
@@ -13,6 +15,8 @@ export class ChessGame {
     this.messageId = null
     this.lastMoveTime = Date.now()
     this.flip = false
+    this.guild = options.guild
+    this.rated = options.rated !== false
   }
 
   getCurrentPlayer() {
@@ -39,6 +43,17 @@ export class ChessGame {
     if (player === 'stockfish') return 'Stockfish'
     if (player === 'random') return 'Random Bot'
     return `<@${player}>`
+  }
+
+  async getPlayerTitle(index) {
+    const player = this.players[index]
+    if (player === 'stockfish' || player === 'random' || !this.guild) return null
+    
+    try {
+      return await eloRole.getUserTitle(this.guild.id, player)
+    } catch (error) {
+      return null
+    }
   }
 
   async makeMove(move) {
@@ -110,9 +125,58 @@ export class ChessGame {
     }
   }
 
+  async finishGame() {
+    if (!this.rated || this.gameType !== 'pvp') return null
+
+    const state = this.getGameState()
+    const player1Id = this.players[0]
+    const player2Id = this.players[1]
+
+    if (typeof player1Id !== 'string' || typeof player2Id !== 'string') return null
+
+    let result = null
+    if (state.isCheckmate) {
+      result = state.turn === 'w' ? 'loss' : 'win'
+    } else if (state.isDraw || state.isStalemate) {
+      result = 'draw'
+    }
+
+    if (result) {
+      const ratingChanges = await database.updateEcholynRating(player1Id, player2Id, result, this.chess.pgn())
+      
+      if (this.guild) {
+        try {
+          await eloRole.updateUserRoles(this.guild, player1Id, ratingChanges.player1.newRating)
+          await eloRole.updateUserRoles(this.guild, player2Id, ratingChanges.player2.newRating)
+        } catch (error) {
+          console.error('Error updating roles:', error)
+        }
+      }
+
+      return ratingChanges
+    }
+
+    return null
+  }
+
   resign(userId) {
     if (!this.isInGame(userId)) return false
-    this.chess.load('8/8/8/8/8/8/8/8 w - - 0 1')
+    
+    const resigningPlayerIndex = this.players.indexOf(userId)
+    const result = resigningPlayerIndex === 0 ? 'loss' : 'win'
+    
+    if (this.rated && this.gameType === 'pvp' && typeof this.players[0] === 'string' && typeof this.players[1] === 'string') {
+      database.updateEcholynRating(this.players[0], this.players[1], result, this.chess.pgn() + '\n1-0 {Resignation}')
+        .then(ratingChanges => {
+          if (this.guild && ratingChanges) {
+            eloRole.updateUserRoles(this.guild, this.players[0], ratingChanges.player1.newRating)
+            eloRole.updateUserRoles(this.guild, this.players[1], ratingChanges.player2.newRating)
+          }
+        })
+        .catch(console.error)
+    }
+    
+    this.chess.load('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
     return true
   }
 }
