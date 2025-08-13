@@ -11,7 +11,7 @@ import {
   MessageFlags,
 } from 'discord.js'
 import { GameManager } from '../utils/game/gameManager.js'
-import { drawBoard } from '../utils/drawBoard.js'
+import { drawBoard } from '../utils/drawBoard.js' // Updated import
 
 export default {
   data: new SlashCommandBuilder()
@@ -62,7 +62,7 @@ export default {
 
     let players, gameType, difficulty = 1500
 
-    if (subcommand === 'play') {
+    if (subcommand === 'challenge') {
       const opponent = interaction.options.getUser('opponent')
       if (opponent) {
         if (opponent.id === interaction.user.id) {
@@ -97,7 +97,7 @@ export default {
 
   async startGame(interaction, players, options) {
     const game = GameManager.createGame(interaction.channelId, players, options)
-    const { embed, attachment, components } = await this.buildGameMessage(game)
+    const { embed, attachment, components } = await this.buildGameMessage(game, interaction.user.id)
     
     const msg = await interaction.reply({
       embeds: [embed],
@@ -109,16 +109,27 @@ export default {
     this.setupGameCollector(msg, game)
   },
 
-  async buildGameMessage(game) {
+  async buildGameMessage(game, requestUserId = null) {
     const state = game.getGameState()
+    
+    // Determine whose config to use (prioritize current player, fallback to requester)
+    const currentPlayerId = game.getCurrentPlayer()
+    const configUserId = (typeof currentPlayerId === 'string' && !['stockfish', 'random'].includes(currentPlayerId)) 
+      ? currentPlayerId 
+      : requestUserId
+
     const buffer = await drawBoard(state.fen, {
       flip: game.currentPlayerIndex === 1,
       players: {
         white: game.getPlayerName(0),
         black: game.getPlayerName(1)
       },
+      clocks: game.clocks || {},
+      eval: game.lastEvaluation,
+      bestMove: game.lastBestMove,
+      checkSquare: state.isCheck ? this.getCheckSquare(game.chess) : null,
       watermark: 'echolyn'
-    })
+    }, configUserId)
     
     const attachment = new AttachmentBuilder(buffer, { name: 'board.png' })
     
@@ -139,6 +150,24 @@ export default {
     return { embed, attachment, components }
   },
 
+  getCheckSquare(chess) {
+    if (!chess.inCheck()) return null
+    
+    const turn = chess.turn()
+    const board = chess.board()
+    
+    for (let rank = 0; rank < 8; rank++) {
+      for (let file = 0; file < 8; file++) {
+        const square = board[rank][file]
+        if (square && square.type === 'k' && square.color === turn) {
+          return { rank, file }
+        }
+      }
+    }
+    
+    return null
+  },
+
   getGameDescription(game, state) {
     let desc = `${game.getPlayerMention(0)} (White) vs ${game.getPlayerMention(1)} (Black)\n\n`
     
@@ -154,8 +183,17 @@ export default {
     } else {
       const currentPlayer = game.getPlayerMention(game.currentPlayerIndex)
       const turnColor = state.turn === 'w' ? 'White' : 'Black'
-      desc += `${state.isCheck ? 'Check. ' : ''}**${turnColor} to move**\n`
+      desc += `${state.isCheck ? 'Check! ' : ''}**${turnColor} to move**\n`
       desc += `Current player: ${currentPlayer}`
+      
+      // Show evaluation if available
+      if (game.lastEvaluation !== undefined) {
+        const sfeval = game.lastEvaluation
+        const evalText = Math.abs(sfeval) >= 100 
+          ? `M${Math.abs(sfeval) - 100}` 
+          : (sfeval >= 0 ? '+' : '') + sfeval.toFixed(2)
+        desc += `\nEvaluation: ${evalText}`
+      }
     }
     
     return desc
@@ -172,7 +210,7 @@ export default {
           return i.reply({ content: 'You cannot play against yourself', flags: MessageFlags.Ephemeral })
         }
         game.players.push(i.user.id)
-        await this.updateGameMessage(i, game)
+        await this.updateGameMessage(i, game, i.user.id)
         return
       }
 
@@ -186,7 +224,7 @@ export default {
 
       if (i.customId === 'flip_board') {
         game.flip = !game.flip
-        await this.updateGameMessage(i, game)
+        await this.updateGameMessage(i, game, i.user.id)
         return
       }
 
@@ -195,7 +233,7 @@ export default {
           return i.reply({ content: 'You are not in this game', flags: MessageFlags.Ephemeral })
         }
         game.resign(i.user.id)
-        await this.updateGameMessage(i, game)
+        await this.updateGameMessage(i, game, i.user.id)
         GameManager.deleteGame(game.id)
         collector.stop()
         return
@@ -238,7 +276,7 @@ export default {
       return modalSubmit.reply({ content: 'Invalid move! Try again.', flags: MessageFlags.Ephemeral })
     }
     
-    await this.updateGameMessage(modalSubmit, game)
+    await this.updateGameMessage(modalSubmit, game, modalSubmit.user.id)
     
     const state = game.getGameState()
     if (state.gameOver) {
@@ -246,8 +284,8 @@ export default {
     }
   },
 
-  async updateGameMessage(interaction, game) {
-    const { embed, attachment, components } = await this.buildGameMessage(game)
+  async updateGameMessage(interaction, game, requestUserId) {
+    const { embed, attachment, components } = await this.buildGameMessage(game, requestUserId)
     
     await interaction.update({
       embeds: [embed],
