@@ -54,5 +54,5 @@ assets/riohacha | |
 
 piece set images taken from lichess-org/lila 
 
-this project is not affiliated with or endorsed by lichess, lila, or the lichess.org team
-this project is not affiliated with or endorsed by chess.com or any related company or service
+this project is not affiliated with or endorsed by lichess, lila, or the lichess.org team.
+this project is also not affiliated with or endorsed by chess.com or any related company or service
