@@ -118,14 +118,13 @@ export const GameManager = {
       const timeRemaining = game.moveTimeLimit - (Date.now() - game.lastMoveTime)
       
       if (timeRemaining <= 0) {
-        // Game timed out
         timeouts.push({
           game,
           type: 'timeout',
           currentPlayer: game.getCurrentPlayer()
         })
       } else if (timeRemaining <= 2 * 60 * 60 * 1000 && !game.lastMoveWarning) {
-        // 2 hours remaining warning
+        // 2 hours
         timeouts.push({
           game,
           type: 'warning',

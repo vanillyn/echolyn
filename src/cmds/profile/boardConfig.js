@@ -11,6 +11,7 @@ import {
   MessageFlags,
 } from 'discord.js'
 import { getUserConfig, setUserConfig, DEFAULT_CONFIG, drawBoard } from '../../utils/drawBoard.js'
+import { userManager } from '../../data/userData.js'
 
 const COLOR_PRESETS = {
   'lichess': {
@@ -39,11 +40,22 @@ const COLOR_PRESETS = {
     lightColor: '#dee3e6',
     darkColor: '#8ca2ad',
     borderColor: '#4a6b7c'
+  },
+  'rose.pine': {
+    lightColor: '#e0def4',
+    darkColor: '#26233a',
+    borderColor: '#161420'
+  },
+  'catppuccin': {
+    lightColor: '#cdd6f4',
+    darkColor: '#1e1e2e', 
+    borderColor: '#181825'
   }
 }
 
 const PIECE_SETS = [
-  'cburnett', 'merida', 'alpha', 'spatial', 'pixel', 'reillycraig', 'companion', 'riohacha'
+  'alpha', 'caliente', 'cardinal', 'celtic', 'chessnut', 'cooke', 'dubrovny', 'firi', 'gioco', 'horsey', 'kiwen-suwi', 'leipzig', 'maestro', 'monarchy', 'mpchess', 'pixel', 'rhosgfx', 'shapes', 'staunty', 'xkcd',
+  'anarcandy', 'california', 'cburnett', 'chess7', 'companion', 'disguised', 'fantasy', 'fresca', 'governor', 'icpieces', 'kosal', 'letter', 'merida', 'mono', 'pirouetti', 'reillycraig', 'riohacha', 'spatial', 'tatiana'
 ]
 
 export default {
@@ -76,7 +88,7 @@ export default {
         
         const buffer = await drawBoard(testFen, {
           ...config,
-          players: { white: 'You (1500)', black: 'Opponent (1600)' },
+          players: { white: `${await interaction.user.name} (${(await userManager.getProfile(interaction.user.id)).echolyn.rating})`, black: 'Opponent (1600)' },
           clocks: { white: '10:00', black: '9:45' },
           eval: 0.2,
           bestMove: 'd7d6'
@@ -473,7 +485,7 @@ export default {
           
           await setUserConfig(userId, { arrowStyle: newStyle })
           await i.reply({ 
-            content: `Arrow style set to ${newStyle}!`, 
+            content: `Applied settings.`, 
             flags: MessageFlags.Ephemeral 
           })
         } else if (option === 'radius') {
