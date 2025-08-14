@@ -6,9 +6,10 @@ export const VARIANTS = {
   antichess: 'Antichess (King of the Hill)',
   horde: 'Horde Chess',
   atomic: 'Atomic Chess',
-  realtime: 'Real-time Chess',
+  realtime: 'Real-time Chaos Chess',
   servervs: 'Server vs Player',
-  correspondence: 'Correspondence Chess'
+  correspondence: 'Correspondence Chess',
+  blitz: 'Speed Chess with Reactions'
 }
 
 export class VariantChess extends Chess {
@@ -24,16 +25,14 @@ export class VariantChess extends Chess {
       case 'horde':
         this.load('rnbqkbnr/pppppppp/8/1PP2PP1/PPPPPPPP/PPPPPPPP/PPPPPPPP/PPPPPPPP w kq - 0 1')
         break
-      case 'antichess':
-        break
-      case 'atomic':
-        break
       case 'realtime':
-        this.pendingMoves = new Map()
-        this.moveBuffer = []
-        this.lastProcessTime = Date.now()
+        this.moveQueue = new Map()
+        this.processingMoves = false
+        this.simultaneousWindow = 3000
         break
-      default:
+      case 'blitz':
+        this.reactionMoves = new Map()
+        this.moveReactions = new Set()
         break
     }
   }
@@ -48,9 +47,108 @@ export class VariantChess extends Chess {
         return this.hordeMove(move, options)
       case 'realtime':
         return this.realtimeMove(move, options)
+      case 'blitz':
+        return this.blitzMove(move, options)
       default:
         return super.move(move, options)
     }
+  }
+
+  realtimeMove(move, options) {
+    const playerId = options.playerId
+    if (!playerId) return null
+
+    this.moveQueue.set(playerId, {
+      move,
+      timestamp: Date.now(),
+      options
+    })
+
+    if (!this.processingMoves) {
+      this.processingMoves = true
+      setTimeout(() => this.processSimultaneousMoves(), this.simultaneousWindow)
+    }
+
+    return { queued: true, move, playerId }
+  }
+
+  processSimultaneousMoves() {
+    this.processingMoves = false
+    
+    if (this.moveQueue.size === 0) return null
+
+    const moves = Array.from(this.moveQueue.entries())
+    this.moveQueue.clear()
+
+    if (moves.length === 1) {
+      const [playerId, moveData] = moves[0]
+      return super.move(moveData.move, moveData.options)
+    }
+
+    const validMoves = moves.filter(([_, data]) => {
+      try {
+        const testChess = new Chess(this.fen())
+        return testChess.move(data.move, { sloppy: true }) !== null
+      } catch {
+        return false
+      }
+    })
+
+    if (validMoves.length === 0) return null
+    if (validMoves.length === 1) {
+      return super.move(validMoves[0][1].move, validMoves[0][1].options)
+    }
+
+    const [p1, p1Data] = validMoves[0]
+    const [p2, p2Data] = validMoves[1]
+
+    if (this.movesConflict(p1Data.move, p2Data.move)) {
+      const earlierMove = p1Data.timestamp <= p2Data.timestamp ? p1Data : p2Data
+      return super.move(earlierMove.move, earlierMove.options)
+    }
+
+    const firstMove = super.move(p1Data.move, p1Data.options)
+    if (firstMove) {
+      try {
+        const secondMove = super.move(p2Data.move, p2Data.options)
+        return { double: true, first: firstMove, second: secondMove }
+      } catch {
+        return firstMove
+      }
+    }
+
+    return null
+  }
+
+  movesConflict(move1, move2) {
+    try {
+      const testChess1 = new Chess(this.fen())
+      const testChess2 = new Chess(this.fen())
+      
+      const result1 = testChess1.move(move1, { sloppy: true })
+      const result2 = testChess2.move(move2, { sloppy: true })
+      
+      if (!result1 || !result2) return true
+      
+      return result1.from === result2.from || 
+             result1.to === result2.to || 
+             result1.to === result2.from ||
+             result1.from === result2.to
+    } catch {
+      return true
+    }
+  }
+
+  blitzMove(move, options) {
+    const playerId = options.playerId
+    const reactionType = options.reactionType
+    
+    if (reactionType) {
+      this.reactionMoves.set(playerId, { move, reaction: reactionType })
+      return { reaction: true, move, playerId }
+    }
+
+    return super.move(move, options)
   }
 
   antichessMove(move, options) {
@@ -90,82 +188,6 @@ export class VariantChess extends Chess {
       this._gameOver = true
     }
     return result
-  }
-
-  realtimeMove(move, options) {
-    const playerId = options.playerId
-    if (!playerId) return null
-
-    this.pendingMoves.set(playerId, {
-      move,
-      timestamp: Date.now(),
-      options
-    })
-
-    return this.processRealtimeMoves()
-  }
-
-  processRealtimeMoves() {
-    const now = Date.now()
-    const moves = Array.from(this.pendingMoves.entries())
-    
-    if (moves.length < 2) return null
-
-    const [player1Move, player2Move] = moves
-    const [p1Id, p1Data] = player1Move
-    const [p2Id, p2Data] = player2Move
-
-    const timeDiff = Math.abs(p1Data.timestamp - p2Data.timestamp)
-    if (timeDiff > 2000) {
-      const earlierMove = p1Data.timestamp < p2Data.timestamp ? p1Data : p2Data
-      const laterPlayerId = p1Data.timestamp < p2Data.timestamp ? p2Id : p1Id
-      
-      const result = super.move(earlierMove.move, earlierMove.options)
-      this.pendingMoves.delete(laterPlayerId)
-      this.pendingMoves.clear()
-      return result
-    }
-
-    const p1Legal = this.isMoveLegal(p1Data.move)
-    const p2Legal = this.isMoveLegal(p2Data.move)
-
-    if (p1Legal && p2Legal) {
-      const conflictResult = this.resolveRealtimeConflict(p1Data, p2Data)
-      this.pendingMoves.clear()
-      return conflictResult
-    } else if (p1Legal) {
-      const result = super.move(p1Data.move, p1Data.options)
-      this.pendingMoves.clear()
-      return result
-    } else if (p2Legal) {
-      const result = super.move(p2Data.move, p2Data.options)
-      this.pendingMoves.clear()
-      return result
-    }
-
-    this.pendingMoves.clear()
-    return null
-  }
-
-  isMoveLegal(move) {
-    try {
-      const tempChess = new Chess(this.fen())
-      return tempChess.move(move, { sloppy: true }) !== null
-    } catch {
-      return false
-    }
-  }
-
-  resolveRealtimeConflict(move1, move2) {
-    if (move1.timestamp < move2.timestamp) {
-      return super.move(move1.move, move1.options)
-    } else if (move2.timestamp < move1.timestamp) {
-      return super.move(move2.move, move2.options)
-    } else {
-      return Math.random() < 0.5 
-        ? super.move(move1.move, move1.options)
-        : super.move(move2.move, move2.options)
-    }
   }
 
   handleAtomicExplosion(square) {
@@ -221,6 +243,18 @@ export class VariantChess extends Chess {
     return whitePawns.length === 0 || !blackKing
   }
 
+  isAtomicGameOver() {
+    const pieces = []
+    for (let rank = 0; rank < 8; rank++) {
+      for (let file = 0; file < 8; file++) {
+        const square = String.fromCharCode(97 + file) + (rank + 1)
+        const piece = this.get(square)
+        if (piece && piece.type === 'k') pieces.push(piece)
+      }
+    }
+    return pieces.length < 2
+  }
+
   isGameOver() {
     switch (this.variant) {
       case 'antichess':
@@ -232,18 +266,6 @@ export class VariantChess extends Chess {
       default:
         return super.isGameOver()
     }
-  }
-
-  isAtomicGameOver() {
-    const pieces = []
-    for (let rank = 0; rank < 8; rank++) {
-      for (let file = 0; file < 8; file++) {
-        const square = String.fromCharCode(97 + file) + (rank + 1)
-        const piece = this.get(square)
-        if (piece && piece.type === 'k') pieces.push(piece)
-      }
-    }
-    return pieces.length < 2
   }
 
   getWinner() {
@@ -317,31 +339,49 @@ export class VariantGame {
     this.guild = options.guild
     this.rated = options.rated !== false
     
+    this.initVariantSpecific()
+  }
+
+  initVariantSpecific() {
     if (this.variant === 'servervs') {
       this.discussionChannel = null
       this.votingActive = false
       this.votes = new Map()
       this.voteEndTime = null
+      this.voteMinutes = 2
     }
-    
 
     if (this.variant === 'correspondence') {
-      this.moveTimeLimit = options.moveTimeLimit || 24 * 60 * 60 * 1000 // 24 hours
+      this.moveTimeLimit = this.options.moveTimeLimit || 24 * 60 * 60 * 1000
       this.lastMoveWarning = false
+    }
+
+    if (this.variant === 'realtime') {
+      this.simultaneousEnabled = true
+      this.moveBuffer = []
+    }
+
+    if (this.variant === 'blitz') {
+      this.reactionCollector = null
+      this.currentMoveMessage = null
     }
   }
 
-  async makeMove(move, playerId = null) {
+  async makeMove(move, playerId = null, options = {}) {
     if (this.variant === 'realtime') {
-      return this.chess.move(move, { sloppy: true, playerId })
+      return this.chess.move(move, { playerId, ...options })
     }
 
     if (this.variant === 'servervs' && this.isServerTurn()) {
       return this.handleServerMove(move, playerId)
     }
 
+    if (this.variant === 'blitz' && options.reactionType) {
+      return this.handleBlitzReaction(move, playerId, options)
+    }
+
     try {
-      const result = this.chess.move(move, { sloppy: true })
+      const result = this.chess.move(move, { sloppy: true, ...options })
       if (!result) return null
       
       this.currentPlayerIndex = 1 - this.currentPlayerIndex
@@ -359,6 +399,19 @@ export class VariantGame {
     }
   }
 
+  handleBlitzReaction(move, playerId, options) {
+    if (options.reactionType === '⚡') {
+      return this.chess.move(move, { playerId, priority: true })
+    } else if (options.reactionType === '🤔') {
+      setTimeout(() => {
+        this.chess.move(move, { playerId })
+      }, 3000)
+      return { delayed: true }
+    }
+    
+    return this.chess.move(move, { playerId })
+  }
+
   isServerTurn() {
     return this.variant === 'servervs' && this.getCurrentPlayer() === 'server'
   }
@@ -366,12 +419,11 @@ export class VariantGame {
   async handleServerMove(move, playerId) {
     if (!this.votingActive) {
       this.startMoveVoting()
-      return null
     }
 
     this.votes.set(playerId, move)
     
-    if (Date.now() >= this.voteEndTime || this.votes.size >= 5) {
+    if (Date.now() >= this.voteEndTime || this.shouldEndVoting()) {
       const winningMove = this.tallyVotes()
       if (winningMove) {
         const result = this.chess.move(winningMove, { sloppy: true })
@@ -385,12 +437,26 @@ export class VariantGame {
       }
     }
     
-    return null
+    return { voted: true, move, totalVotes: this.votes.size }
+  }
+
+  shouldEndVoting() {
+    const uniqueVotes = new Set(this.votes.values())
+    const majorityThreshold = Math.floor(this.votes.size / 2) + 1
+    
+    for (const move of uniqueVotes) {
+      const voteCount = Array.from(this.votes.values()).filter(v => v === move).length
+      if (voteCount >= majorityThreshold && this.votes.size >= 3) {
+        return true
+      }
+    }
+    
+    return this.votes.size >= 10
   }
 
   startMoveVoting() {
     this.votingActive = true
-    this.voteEndTime = Date.now() + 60000 // 1 minute
+    this.voteEndTime = Date.now() + (this.voteMinutes * 60000)
     this.votes.clear()
   }
 
@@ -418,11 +484,14 @@ export class VariantGame {
     if (this.variant === 'servervs') {
       return this.currentPlayerIndex === 0 ? this.players[0] : 'server'
     }
+    if (this.variant === 'realtime') {
+      return 'both'
+    }
     return this.players[this.currentPlayerIndex]
   }
 
   isPlayerTurn(userId) {
-    if (this.variant === 'realtime') {
+    if (this.variant === 'realtime' || this.variant === 'blitz') {
       return this.players.includes(userId)
     }
     if (this.variant === 'servervs' && this.isServerTurn()) {
@@ -448,6 +517,7 @@ export class VariantGame {
       baseState.votingActive = this.votingActive
       baseState.votes = Array.from(this.votes.entries())
       baseState.voteEndTime = this.voteEndTime
+      baseState.timeRemaining = this.voteEndTime ? Math.max(0, this.voteEndTime - Date.now()) : 0
     }
 
     if (this.variant === 'correspondence') {
@@ -456,7 +526,8 @@ export class VariantGame {
     }
 
     if (this.variant === 'realtime') {
-      baseState.pendingMoves = Array.from(this.chess.pendingMoves?.entries() || [])
+      baseState.queuedMoves = Array.from(this.chess.moveQueue?.entries() || [])
+      baseState.processingMoves = this.chess.processingMoves
     }
 
     return baseState
@@ -465,19 +536,21 @@ export class VariantGame {
   getVariantDescription() {
     switch (this.variant) {
       case 'antichess':
-        return 'Capture moves are mandatory. First to lose all pieces or stalemate wins!'
+        return 'Capture moves are mandatory. First to lose all pieces wins!'
       case 'horde':
-        return 'White has only pawns, Black has normal pieces. White wins by checkmating Black king, Black wins by capturing all white pawns.'
+        return 'White: only pawns vs Black: normal pieces. White wins by checkmate, Black by capturing all pawns.'
       case 'atomic':
-        return 'Captures cause explosions! Pieces adjacent to captures are destroyed (except pawns).'
+        return 'Captures cause explosions! Adjacent pieces destroyed (except pawns).'
       case 'realtime':
-        return 'Both players can move simultaneously! Conflicts resolved by timestamp.'
+        return 'Both players move simultaneously! 3-second windows, conflicts resolved by timestamp.'
       case 'servervs':
-        return 'The entire server collaborates on moves against a single opponent.'
+        return 'The server votes on moves against one player. Democracy vs skill!'
       case 'correspondence':
-        return 'Slow-paced chess via DMs.'
+        return 'Slow chess via DMs. 24 hours per move.'
+      case 'blitz':
+        return 'React ⚡ for instant moves, 🤔 for 3-second delay!'
       default:
-        return 'Standard chess rules apply.'
+        return 'Standard chess rules.'
     }
   }
 
@@ -518,6 +591,7 @@ export class VariantGame {
 
   getPlayerName(index) {
     if (this.variant === 'servervs' && index === 1) return 'The Server'
+    if (this.variant === 'realtime' && index === 1) return 'Both Players'
     
     const player = this.players[index]
     if (player === 'stockfish') return 'Stockfish'
@@ -527,6 +601,7 @@ export class VariantGame {
 
   getPlayerMention(index) {
     if (this.variant === 'servervs' && index === 1) return 'The Server'
+    if (this.variant === 'realtime') return 'Everyone'
     
     const player = this.players[index]
     if (player === 'stockfish') return 'Stockfish'
