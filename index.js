@@ -1,8 +1,10 @@
 import { Client, GatewayIntentBits } from 'discord.js'
 import config from './config.js'
+import { version, contributors} from './package.json'
 import { initClient, log } from './src/init.js'
 import { authServer } from './src/utils/authServer.js'
-
+const contributers = contributors.map(a => a.name).join(", ")
+log.info(`${config.name} | ${version} - ${contributers}`)
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 })

@@ -167,6 +167,7 @@ async function handleGameAnalysis(interaction) {
 		await processGameAnalysis(interaction, pgn, createGif);
 	}
 }
+// In analyze.js, update the processGameAnalysis function:
 
 async function processGameAnalysis(interaction, pgn, createGif) {
 	const parsed = buildFensAndMetaFromPgn(pgn);
@@ -181,7 +182,7 @@ async function processGameAnalysis(interaction, pgn, createGif) {
 	const white = headers.White || headers.WhitePlayer || 'white';
 	const black = headers.Black || headers.BlackPlayer || 'black';
 
-	await interaction.editReply({ content: 'Analyzing game... This may take a while.' });
+	await interaction.editReply({ content: 'Analyzing game. This may take a while.' });
 
 	try {
 		const analysisResult = await analysis.analyzeGame(pgn);
@@ -242,9 +243,11 @@ async function processGameAnalysis(interaction, pgn, createGif) {
 
 		if (createGif) {
 			try {
-				const gifBuffer = await gifRenderer.createGameReviewGif(pgn, {
+				await interaction.editReply({ content: 'Rendering GIF, this will also take a while.' });
+				const gifBuffer = await gifRenderer.createAnalysisGif(pgn, analysisResult, {
 					delay: 1500,
-					boardOptions: { size: 400 },
+					size: 400,
+					userId: interaction.user.id
 				});
 
 				embed.setImage('attachment://game_analysis.gif');

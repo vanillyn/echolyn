@@ -21,6 +21,8 @@ const DEFAULT_CONFIG = {
 	watermarkColor: 'rgba(255,255,255,0.7)',
 	arrowColor: 'rgba(208, 228, 208, 0.8)',
 	checkColor: 'rgba(255, 0, 0, 0.4)',
+	lastMoveColor: 'rgba(255, 255, 0, 0.6)',
+	highlightColor: 'rgba(100, 200, 100, 0.6)',
 	pieceSet: 'cburnett',
 	showCoordinates: true,
 	coordinatePosition: 'inside',
@@ -97,6 +99,9 @@ class ChessBoardRenderer {
 			eval: evaluation,
 			bestMove,
 			checkSquare,
+			lastMove,
+			highlights = [],
+			annotation,
 			lightColor,
 			darkColor,
 			borderColor,
@@ -111,6 +116,8 @@ class ChessBoardRenderer {
 			watermarkColor,
 			arrowColor,
 			checkColor,
+			lastMoveColor,
+			highlightColor,
 			pieceSet,
 			showCoordinates,
 			coordinatePosition,
@@ -184,6 +191,14 @@ class ChessBoardRenderer {
     .square.check { 
       background: ${checkColor} !important; 
       ${shadowEnabled ? `box-shadow: inset 0 0 10px rgba(255,0,0,0.5);` : ''}
+    }
+    .square.last-move {
+      background-color: ${lastMoveColor} !important;
+      ${shadowEnabled ? `box-shadow: inset 0 0 8px rgba(255,255,0,0.4);` : ''}
+    }
+    .square.highlight {
+      background-color: ${highlightColor} !important;
+      ${shadowEnabled ? `box-shadow: inset 0 0 8px rgba(100,200,100,0.4);` : ''}
     }
     .piece { 
       width: ${squareSize * 0.9}px; 
@@ -282,6 +297,15 @@ class ChessBoardRenderer {
       font-weight: 500;
       text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
     }
+    .annotation {
+      position: absolute;
+      top: 6px;
+      left: 12px;
+      font-size: 18px;
+      font-weight: bold;
+      color: ${watermarkColor};
+      text-shadow: 1px 1px 1px rgba(0,0,0,0.8);
+    }
     .arrow {
       position: absolute;
       pointer-events: none;
@@ -313,7 +337,7 @@ class ChessBoardRenderer {
       <div class="board-section">
         ${showPlayers ? this.renderPlayers(players, clocks, flip, true, options) : ''}
         <div class="chess-board">
-          ${this.renderSquares(size, flip, checkSquare, options)}
+          ${this.renderSquares(size, flip, checkSquare, lastMove, highlights, options)}
           ${this.renderCoords(size, flip, showCoordinates, coordinatePosition)}
           ${await this.renderPieces(fen, size, flip, pieceImages)}
           ${
@@ -327,6 +351,7 @@ class ChessBoardRenderer {
       ${showEval ? this.renderEval(evaluation, size, options) : ''}
     </div>
     <div class="watermark">${watermark}</div>
+    ${annotation ? `<div class="annotation">${annotation}</div>` : ''}
   </div>
 </body>
 </html>`;
@@ -345,7 +370,7 @@ class ChessBoardRenderer {
     </div>`;
 	}
 
-	renderSquares(size, flip, checkSquare) {
+	renderSquares(size, flip, checkSquare, lastMove, highlights = []) {
 		const squareSize = size / 8;
 		let squares = '';
 
@@ -358,6 +383,9 @@ class ChessBoardRenderer {
 				const top = boardRank * squareSize;
 
 				const isLight = (fenRank + fenFile) % 2 === 0;
+				const square = String.fromCharCode(97 + fenFile) + (8 - fenRank);
+
+				let classes = `square ${isLight ? 'light' : 'dark'}`;
 
 				let isCheck = false;
 				if (checkSquare) {
@@ -366,9 +394,18 @@ class ChessBoardRenderer {
 					isCheck = checkRank === boardRank && checkFile === boardFile;
 				}
 
-				squares += `<div class="square ${isLight ? 'light' : 'dark'} ${
-					isCheck ? 'check' : ''
-				}" 
+				if (isCheck) classes += ' check';
+
+				if (lastMove && (lastMove.from === square || lastMove.to === square)) {
+					classes += ' last-move';
+				}
+
+				const highlight = highlights.find(h => h.square === square);
+				if (highlight) {
+					classes += ' highlight';
+				}
+
+				squares += `<div class="${classes}" 
         style="left:${left}px; top:${top}px;"></div>`;
 			}
 		}

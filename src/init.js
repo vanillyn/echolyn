@@ -6,6 +6,7 @@ import pino from 'pino'
 import { userManager } from './data/userData.js'
 import { serverConfig } from './data/serverData.js'
 
+const LOG_NAME = "init"
 export const log = pino({
   transport: {
     target: 'pino-pretty',
@@ -51,13 +52,13 @@ export async function initClient(client) {
     const cmd = (await import(importPath)).default
     client.commands.set(cmd.data.name, cmd)
     cmdData.push(cmd.data.toJSON())
-    log.debug(`loaded ${cmd.data.name}. (${relativePath})`)
+    log.debug(`${LOG_NAME}: loaded ${cmd.data.name}. (${relativePath})`)
   }
 
   const rest = new REST({ version: '10' }).setToken(config.token)
   try {
     await rest.put(Routes.applicationCommands(config.clientId), { body: cmdData })
-    log.info('commands registered')
+    log.info(`${LOG_NAME}: all commands loaded.`)
   } catch (err) {
     log.error({ err }, 'error registering commands')
   }
