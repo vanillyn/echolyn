@@ -3,6 +3,7 @@
     "chalk": "^5.5.0",
     "chess-web-api": "^1.2.0",
     "chess.js": "^1.4.0",
+    "chessops": "^0.14.2",
     "discord.js": "^14.21.0",
     "dotenv": "^17.2.1",
     "elo-rank": "^1.0.4",
