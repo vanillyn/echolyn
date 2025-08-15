@@ -1,6 +1,9 @@
 import puppeteer from 'puppeteer';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { log } from '../init';
+
+const LOG_NAME = "render.board"
 
 const DEFAULT_CONFIG = {
 	size: 512,
@@ -568,6 +571,7 @@ export async function initBoardRenderer() {
 
 export async function drawBoard(fen, options = {}, userId = null) {
 	const renderer = await initBoardRenderer();
+	log.debug(`${LOG_NAME}: drawing board for FEN: ${fen}`)
 	return await renderer.renderBoard(fen, options, userId);
 }
 

@@ -1,5 +1,5 @@
 import { Chess } from 'chess.js'
-import { analyzePosition } from '../stockfish.js'
+import { analyzePosition } from '../stockfish/stockfish.js'
 import { database } from '../../data/database.js'
 import { eloRole } from '../eloRole.js'
 

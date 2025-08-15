@@ -8,7 +8,7 @@ import {
 	MessageFlags,
 } from 'discord.js';
 import { drawBoard } from '../utils/drawBoard.js';
-import { analyzePosition } from '../utils/stockfish.js';
+import { analyzePosition } from '../utils/stockfish/stockfish.js';
 import { log } from '../init.js';
 import { buildFensAndMetaFromPgn } from '../utils/parsePGN.js';
 import { extractChessComId, fetchChessComPgn } from '../utils/api/chesscomApi.js';

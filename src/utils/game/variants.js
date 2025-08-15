@@ -1,5 +1,5 @@
 import { Chess } from 'chess.js'
-import { analyzePosition } from '../stockfish.js'
+import { analyzePosition } from '../stockfish/stockfish.js'
 
 export const VARIANTS = {
   standard: 'Standard Chess',

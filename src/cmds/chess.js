@@ -507,7 +507,14 @@ export default {
         if (!game.isInGame(i.user.id)) {
           return i.reply({ content: 'You are not in this game', flags: MessageFlags.Ephemeral })
         }
-        game.resign(i.user.id)
+        if (typeof game.resign === 'function') {
+          game.resign(i.user.id)
+        } else if (typeof game.handleResign === 'function') {
+          game.handleResign(i.user.id)
+        } else {
+          game.gameOver = true
+          game.resignedPlayer = i.user.id
+        }
         await this.updateGameMessage(i, game, i.user.id)
         GameManager.deleteGame(game.id)
         collector.stop()
