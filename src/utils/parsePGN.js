@@ -1,8 +1,8 @@
 import { parsePgn } from 'chessops/pgn';
 import { Chess } from 'chessops/chess';
 import { parseFen, makeFen } from 'chessops/fen';
-import { parseUci, makeUci } from 'chessops/util';
 import { log } from '../init.js';
+import { parseSan } from 'chessops/san';
 
 let ChessWebAPI;
 try {
@@ -124,10 +124,10 @@ export function buildFensAndMetaFromPgn(pgn) {
 	try {
 		const games = parsePgn(pgn);
 		if (games.length === 0) throw new Error('No games found in PGN');
-		
+
 		const game = games[0];
 		const headers = Object.fromEntries(game.headers);
-		
+
 		let pos = Chess.default();
 		if (game.headers.has('FEN')) {
 			const setup = parseFen(game.headers.get('FEN')).unwrap();
@@ -154,9 +154,9 @@ export function buildFensAndMetaFromPgn(pgn) {
 		for (const node of game.moves.mainline()) {
 			if (!node.san) continue;
 
-			const move = pos.parseSan(node.san);
+			const move = parseSan(pos, node.san);
 			if (!move) break;
-			
+
 			pos = pos.play(move);
 
 			const { tags, clean } = parseCommentTagsAndClean(node.comments.join(' '));
@@ -173,7 +173,7 @@ export function buildFensAndMetaFromPgn(pgn) {
 				san: node.san,
 				side: pos.turn === 'white' ? 'black' : 'white',
 				comment: clean,
-				glyph: node.nags.length > 0 ? nagToGlyph(node.nags[0]) : null
+				glyph: node.nags.length > 0 ? nagToGlyph(node.nags[0]) : null,
 			});
 
 			fens.push(makeFen(pos.toSetup()));
@@ -215,7 +215,7 @@ function nagToGlyph(nag) {
 		3: '!!',
 		4: '??',
 		5: '!?',
-		6: '?!'
+		6: '?!',
 	};
 	return glyphMap[nag] || null;
 }
@@ -253,9 +253,9 @@ function buildFensAndMetaFromPgnLegacy(pgn) {
 
 	for (const moveObj of movesWithComments) {
 		try {
-			const move = pos.parseSan(moveObj.san);
+			const move = parseSan(pos, moveObj.san);
 			if (!move) break;
-			
+
 			pos = pos.play(move);
 
 			const { tags, clean } = parseCommentTagsAndClean(moveObj.comment);
