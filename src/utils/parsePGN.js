@@ -1,8 +1,5 @@
-import { parsePgn } from 'chessops/pgn';
-import { Chess } from 'chessops/chess';
-import { parseFen, makeFen } from 'chessops/fen';
+import { Chess } from 'chess.js';
 import { log } from '../init.js';
-import { parseSan } from 'chessops/san';
 
 let ChessWebAPI;
 try {
@@ -10,6 +7,7 @@ try {
 } catch (e) {
 	ChessWebAPI = null;
 }
+
 
 export function splitHeadersAndMoves(pgn) {
 	const lines = pgn.split(/\r?\n/);
@@ -62,7 +60,7 @@ export function tokenizeMoves(movesText) {
 export function parseMovesWithComments(movesText) {
 	const tokens = tokenizeMoves(movesText);
 	const moves = [];
-	let side = 'white';
+	let side = 'w';
 	for (let t of tokens) {
 		if (t.type === 'word') {
 			if (/^\d+\.+$/.test(t.text)) continue;
@@ -75,7 +73,7 @@ export function parseMovesWithComments(movesText) {
 				san = san.slice(0, -glyph.length);
 			}
 			moves.push({ san, glyph, side, comment: null });
-			side = side === 'white' ? 'black' : 'white';
+			side = side === 'w' ? 'b' : 'w';
 		} else if (t.type === 'comment') {
 			if (moves.length > 0) {
 				const last = moves[moves.length - 1];
@@ -121,127 +119,18 @@ export function extractHeaders(headersText) {
 }
 
 export function buildFensAndMetaFromPgn(pgn) {
-	try {
-		const games = parsePgn(pgn);
-		if (games.length === 0) throw new Error('No games found in PGN');
-
-		const game = games[0];
-		const headers = Object.fromEntries(game.headers);
-
-		let pos = Chess.default();
-		if (game.headers.has('FEN')) {
-			const setup = parseFen(game.headers.get('FEN')).unwrap();
-			pos = Chess.fromSetup(setup).unwrap();
-		}
-
-		const fens = [];
-		const meta = [];
-		const moves = [];
-
-		fens.push(makeFen(pos.toSetup()));
-		meta.push({
-			inCheck: pos.isCheck(),
-			isCheckmate: pos.isCheckmate(),
-			checkSquare: pos.isCheck() ? getKingSquare(pos, pos.turn) : null,
-			eval: undefined,
-			clocks: { white: null, black: null },
-			comment: null,
-			glyph: null,
-		});
-
-		let lastClocks = { white: null, black: null };
-
-		for (const node of game.moves.mainline()) {
-			if (!node.san) continue;
-
-			const move = parseSan(pos, node.san);
-			if (!move) break;
-
-			pos = pos.play(move);
-
-			const { tags, clean } = parseCommentTagsAndClean(node.comments.join(' '));
-
-			if (tags.clk) {
-				if (pos.turn === 'black') lastClocks.white = tags.clk;
-				else lastClocks.black = tags.clk;
-			}
-
-			const evalVal = typeof tags.eval === 'number' ? tags.eval : undefined;
-			const checkSquare = pos.isCheck() ? getKingSquare(pos, pos.turn) : null;
-
-			moves.push({
-				san: node.san,
-				side: pos.turn === 'white' ? 'black' : 'white',
-				comment: clean,
-				glyph: node.nags.length > 0 ? nagToGlyph(node.nags[0]) : null,
-			});
-
-			fens.push(makeFen(pos.toSetup()));
-			meta.push({
-				inCheck: pos.isCheck(),
-				isCheckmate: pos.isCheckmate(),
-				checkSquare,
-				eval: evalVal,
-				clocks: { white: lastClocks.white, black: lastClocks.black },
-				comment: clean,
-				glyph: node.nags.length > 0 ? nagToGlyph(node.nags[0]) : null,
-			});
-		}
-
-		return { headers, fens, meta, moves };
-	} catch (error) {
-		log.error('Failed to parse PGN with chessops, falling back to legacy parser:', error);
-		return buildFensAndMetaFromPgnLegacy(pgn);
-	}
-}
-
-function getKingSquare(pos, color) {
-	const board = pos.board;
-	for (let square = 0; square < 64; square++) {
-		const piece = board.get(square);
-		if (piece && piece.role === 'king' && piece.color === color) {
-			const file = square % 8;
-			const rank = Math.floor(square / 8);
-			return { rank, file };
-		}
-	}
-	return null;
-}
-
-function nagToGlyph(nag) {
-	const glyphMap = {
-		1: '!',
-		2: '?',
-		3: '!!',
-		4: '??',
-		5: '!?',
-		6: '?!',
-	};
-	return glyphMap[nag] || null;
-}
-
-function buildFensAndMetaFromPgnLegacy(pgn) {
 	const { headersText, movesText } = splitHeadersAndMoves(pgn);
 	const headers = extractHeaders(headersText);
 	const movesWithComments = parseMovesWithComments(movesText);
 
-	let pos = Chess.default();
-	if (headers.FEN) {
-		try {
-			const setup = parseFen(headers.FEN).unwrap();
-			pos = Chess.fromSetup(setup).unwrap();
-		} catch (e) {
-			log.warn('Invalid FEN in header, using default position:', headers.FEN);
-		}
-	}
-
+	const chess = new Chess();
 	const fens = [];
 	const meta = [];
 
-	fens.push(makeFen(pos.toSetup()));
+	fens.push(chess.fen());
 	meta.push({
-		inCheck: pos.isCheck(),
-		isCheckmate: pos.isCheckmate(),
+		inCheck: chess.inCheck(),
+		isCheckmate: chess.isCheckmate(),
 		checkSquare: null,
 		eval: undefined,
 		clocks: { white: null, black: null },
@@ -252,37 +141,46 @@ function buildFensAndMetaFromPgnLegacy(pgn) {
 	let lastClocks = { white: null, black: null };
 
 	for (const moveObj of movesWithComments) {
-		try {
-			const move = parseSan(pos, moveObj.san);
-			if (!move) break;
-
-			pos = pos.play(move);
-
-			const { tags, clean } = parseCommentTagsAndClean(moveObj.comment);
-			moveObj.clean = clean;
-
-			if (tags.clk) {
-				if (moveObj.side === 'white') lastClocks.white = tags.clk;
-				else lastClocks.black = tags.clk;
-			}
-
-			const evalVal = typeof tags.eval === 'number' ? tags.eval : undefined;
-			const checkSquare = pos.isCheck() ? getKingSquare(pos, pos.turn) : null;
-
-			fens.push(makeFen(pos.toSetup()));
-			meta.push({
-				inCheck: pos.isCheck(),
-				isCheckmate: pos.isCheckmate(),
-				checkSquare,
-				eval: evalVal,
-				clocks: { white: lastClocks.white, black: lastClocks.black },
-				comment: clean,
-				glyph: moveObj.glyph,
-			});
-		} catch (error) {
-			log.warn(`Failed to parse move: ${moveObj.san}`, error);
+		const moveResult = chess.move(moveObj.san, { sloppy: true });
+		if (!moveResult) {
 			break;
 		}
+
+		const { tags, clean } = parseCommentTagsAndClean(moveObj.comment);
+		moveObj.clean = clean;
+
+		if (tags.clk) {
+			if (moveObj.side === 'w') lastClocks.white = tags.clk;
+			else lastClocks.black = tags.clk;
+		}
+
+		const evalVal = typeof tags.eval === 'number' ? tags.eval : undefined;
+
+		let checkSquare = null;
+		if (chess.inCheck()) {
+			const b = chess.board();
+			const turn = chess.turn(); 
+			outer: for (let r = 0; r < 8; r++) {
+				for (let f = 0; f < 8; f++) {
+					const sq = b[r][f];
+					if (sq && sq.type === 'k' && sq.color === turn) {
+						checkSquare = { rank: r, file: f };
+						break outer;
+					}
+				}
+			}
+		}
+
+		fens.push(chess.fen());
+		meta.push({
+			inCheck: chess.inCheck(),
+			isCheckmate: chess.isCheckmate(),
+			checkSquare,
+			eval: evalVal,
+			clocks: { white: lastClocks.white, black: lastClocks.black },
+			comment: clean,
+			glyph: moveObj.glyph,
+		});
 	}
 
 	return { headers, fens, meta, moves: movesWithComments };
