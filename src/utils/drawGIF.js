@@ -44,7 +44,6 @@ export class GifRenderer {
       tmpDir = tmpObj.path;
       cleanup = tmpObj.cleanup;
 
-      // write frames to temp png files
       const writePromises = frames.map(async (frame, i) => {
         const filename = path.join(tmpDir, `frame-${i.toString().padStart(4, '0')}.png`);
         await fs.writeFile(filename, frame);
@@ -54,7 +53,6 @@ export class GifRenderer {
 
       const inputPattern = path.join(tmpDir, 'frame-%04d.png');
 
-      // calculate fps from delay (delay in ms, fps = 1000 / delay)
       const fps = 1000 / config.delay;
 
       return await new Promise((resolve, reject) => {

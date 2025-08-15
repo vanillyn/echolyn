@@ -167,7 +167,6 @@ async function handleGameAnalysis(interaction) {
 		await processGameAnalysis(interaction, pgn, createGif);
 	}
 }
-// In analyze.js, update the processGameAnalysis function:
 
 async function processGameAnalysis(interaction, pgn, createGif) {
 	const parsed = buildFensAndMetaFromPgn(pgn);

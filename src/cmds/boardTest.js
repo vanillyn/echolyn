@@ -1,5 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
-import { Chess } from 'chess.js';
+import { Chess } from 'chessops/chess';
+import { parseFen, makeFen } from 'chessops/fen';
 import { drawBoard } from '../utils/drawBoard';
 import { hexToRgba, isCheckmate, isInCheck } from '../utils/utils';
 
@@ -65,9 +66,11 @@ export default {
 	async execute(interaction) {
 		await interaction.deferReply();
 		const fen = interaction.options.getString('fen');
-		let chess;
+		
+		let pos;
 		try {
-			chess = new Chess(fen);
+			const setup = parseFen(fen).unwrap();
+			pos = Chess.fromSetup(setup).unwrap();
 		} catch (error) {
 			return interaction.editReply(
 				'Invalid FEN string. Please provide a valid chess position in FEN format.'
@@ -83,16 +86,27 @@ export default {
 		};
 
 		try {
-			const buffer = await drawBoard(fen, isInCheck(chess), isCheckmate(chess), options);
+			const checkSquare = pos.isCheck() ? getKingSquare(pos, pos.turn) : null;
+			const buffer = await drawBoard(fen, checkSquare, pos.isCheckmate(), options);
+			
+			let statusText = '';
+			if (pos.isCheckmate()) {
+				const winner = pos.turn === 'white' ? 'Black' : 'White';
+				statusText = `(${winner} wins by checkmate)`;
+			} else if (pos.isCheck()) {
+				statusText = '(Check)';
+			} else if (pos.isStalemate()) {
+				statusText = '(Stalemate)';
+			} else if (pos.isInsufficientMaterial()) {
+				statusText = '(Draw - Insufficient material)';
+			}
+
 			const embed = new EmbedBuilder()
-				.setTitle(
-					`Chess Position ${
-						isCheckmate(chess).checkmate ? `(${isCheckmate(chess).victor} wins by checkmate)` : isInCheck(chess) ? '(Check)' : ''
-					}`
-				)
+				.setTitle(`Chess Position ${statusText}`)
 				.setDescription(`Chess position from \`${fen}\``)
 				.setImage('attachment://chessboard.png')
 				.setColor('#e6e6e6');
+				
 			await interaction.editReply({
 				embeds: [embed],
 				files: [{ attachment: buffer, name: 'chessboard.png' }],
@@ -103,3 +117,16 @@ export default {
 		}
 	},
 };
+
+function getKingSquare(pos, color) {
+	const board = pos.board;
+	for (let square = 0; square < 64; square++) {
+		const piece = board.get(square);
+		if (piece && piece.role === 'king' && piece.color === color) {
+			const file = square % 8;
+			const rank = Math.floor(square / 8);
+			return { rank, file };
+		}
+	}
+	return null;
+}
