@@ -58,7 +58,7 @@ export default {
 
       try {
         const gifBuffer = await gifRenderer.createOpeningGif(opening.moves, undefined, {
-          delay: interaction.options.getInteger('delay'),
+          delay: interaction.options.getInteger('delay') ?? 1000,
           boardOptions: {
             size: 400,
             showCoordinates: true,
