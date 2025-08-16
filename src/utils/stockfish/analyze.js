@@ -5,8 +5,8 @@ import { log } from '../../init.js';
 
 export class Analysis {
 	constructor() {
-		this.searchTime = 3000;
-		this.concurrency = 8;
+		this.searchTime = 2000;
+		this.concurrency = 12;
 		this.annotations = {
 			BLUNDER: { symbol: '??', threshold: -200, description: 'Blunder' },
 			MISTAKE: { symbol: '?', threshold: -100, description: 'Mistake' },
@@ -132,6 +132,10 @@ export class Analysis {
 						searchTime: this.searchTime,
 					});
 
+					const afterAnalysis = await analyzePosition(pos.afterFen, {
+						searchTime: this.searchTime,
+					});
+
 					return {
 						index: pos.index,
 						beforeFen: pos.beforeFen,
@@ -139,19 +143,11 @@ export class Analysis {
 						move: pos.move,
 						playedMove: pos.playedMove,
 						beforeAnalysis,
-						afterAnalysis: null 
+						afterAnalysis
 					};
 				} catch (error) {
 					log.error(`Analysis failed for position ${pos.index}: ${error.message}`);
-					return {
-						index: pos.index,
-						beforeFen: pos.beforeFen,
-						afterFen: pos.afterFen,
-						move: pos.move,
-						playedMove: pos.playedMove,
-						beforeAnalysis: null,
-						afterAnalysis: null
-					};
+					return null;
 				}
 			});
 
@@ -167,7 +163,7 @@ export class Analysis {
 	}
 
 	evaluateMove(beforeAnalysis, afterAnalysis, color, prevEval, playedMove = null) {
-		if (!beforeAnalysis) {
+		if (!beforeAnalysis || !afterAnalysis) {
 			return {
 				eval: prevEval,
 				annotation: this.annotations.GOOD,
@@ -178,6 +174,12 @@ export class Analysis {
 		const beforeEval = this.normalizeEval(
 			beforeAnalysis.eval,
 			beforeAnalysis.mateIn,
+			color
+		);
+
+		const afterEval = this.normalizeEval(
+			afterAnalysis.eval,
+			afterAnalysis.mateIn,
 			color
 		);
 
@@ -193,69 +195,41 @@ export class Analysis {
 			};
 		}
 
-		if (isbestMove) {
-			return {
-				eval: beforeEval,
-				annotation: this.annotations.GOOD,
-				comment: 'Best move',
-			};
-		}
-
-		const evalDiff = this.estimateEvalDiff(beforeAnalysis, color, playedMove, bestMove);
+		const evalDiff = afterEval - beforeEval;
 
 		let annotation;
 		let comment;
 
-		if (evalDiff <= this.annotations.BLUNDER.threshold) {
+		if (evalDiff <= -300) {  
 			annotation = this.annotations.BLUNDER;
-			comment = `Loses ${Math.abs(Math.round(evalDiff))} centipawns`;
-		} else if (evalDiff <= this.annotations.MISTAKE.threshold) {
+			comment = `Loses ${Math.abs(Math.round(evalDiff / 100))} pawns`;
+		} else if (evalDiff <= -150) {
 			annotation = this.annotations.MISTAKE;
-			comment = `Loses ${Math.abs(Math.round(evalDiff))} centipawns`;
-		} else if (evalDiff <= this.annotations.INACCURACY.threshold) {
+			comment = `Loses ${Math.abs(Math.round(evalDiff / 100))} pawns`;
+		} else if (evalDiff <= -75) {
 			annotation = this.annotations.INACCURACY;
-			comment = `Loses ${Math.abs(Math.round(evalDiff))} centipawns`;
-		} else if (evalDiff >= 50) {
+			comment = `Loses ${Math.abs((evalDiff / 100).toFixed(1))} pawns`;
+		} else if (evalDiff >= 100) {
 			annotation = this.annotations.EXCELLENT;
-			comment = `Gains ${Math.round(evalDiff)} centipawns`;
-		} else if (evalDiff >= 0) {
+			comment = `Gains ${(evalDiff / 100).toFixed(1)} pawns`;
+		} else if (evalDiff >= 50) {
 			annotation = this.annotations.GOOD;
-			comment = 'Maintains advantage';
+			comment = `Gains ${(evalDiff / 100).toFixed(1)} pawns`;
 		} else {
 			annotation = this.annotations.GOOD;
-			comment = 'Solid move';
+			comment = isbestMove ? 'Best move' : 'Good move';
 		}
 
 		return {
-			eval: beforeEval + evalDiff,
+			eval: afterEval,
 			annotation,
 			comment,
 		};
 	}
 
-	estimateEvalDiff(beforeAnalysis, color, playedMove, bestMove) {
-		if (!beforeAnalysis.eval || !bestMove || !playedMove) {
-			return Math.random() * 40 - 20; 
-		}
-
-		if (playedMove === bestMove || playedMove.slice(0, 4) === bestMove.slice(0, 4)) {
-			return 0;
-		}
-
-		const currentEval = Math.abs(beforeAnalysis.eval);
-		
-		if (currentEval > 3) {
-			return Math.random() * -150 - 50;
-		} else if (currentEval > 1) {
-			return Math.random() * -100 - 25;
-		} else {
-			return Math.random() * -75 - 10;
-		}
-	}
-
 	normalizeEval(sfeval, mateIn, color) {
 		if (mateIn !== null) {
-			const mateValue = mateIn > 0 ? 1000 - mateIn : -1000 - mateIn;
+			const mateValue = mateIn > 0 ? 2000 - Math.abs(mateIn) * 10 : -2000 + Math.abs(mateIn) * 10;
 			return color === 'white' ? mateValue : -mateValue;
 		}
 		if (sfeval === null) return 0;
@@ -298,32 +272,41 @@ export class Analysis {
 		const calculatePlayerAccuracy = playerMoves => {
 			if (playerMoves.length === 0) return 100;
 
-			let totalPenalty = 0;
+			let totalScore = 0;
+			let maxScore = 0;
+
 			for (const move of playerMoves) {
+				maxScore += 100;
+				
 				switch (move.annotation.symbol) {
-					case '??':
-						totalPenalty += 10;
+					case '??': // Blunder
+						totalScore += 10;
 						break;
-					case '?':
-						totalPenalty += 5;
+					case '?': // Mistake
+						totalScore += 40;
 						break;
-					case '?!':
-						totalPenalty += 2;
+					case '?!': // Inaccuracy
+						totalScore += 70;
 						break;
-					case '✓':
-						totalPenalty -= 0.5;
+					case '✓': // Good
+						totalScore += 85;
 						break;
-					case '!':
-						totalPenalty -= 1;
+					case '!': // Excellent
+						totalScore += 95;
 						break;
-					case '!!':
-						totalPenalty -= 2;
+					case '!!': // Brilliant
+						totalScore += 100;
+						break;
+					case '📓': // Book
+						totalScore += 90;
+						break;
+					default:
+						totalScore += 85;
 						break;
 				}
 			}
 
-			const avgPenalty = totalPenalty / playerMoves.length;
-			return Math.max(0, Math.min(100, Math.round(100 - avgPenalty)));
+			return Math.round((totalScore / maxScore) * 100);
 		};
 
 		return {

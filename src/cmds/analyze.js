@@ -77,10 +77,6 @@ function getAnnotationColor(symbol) {
 	return colors[symbol] || 'transparent';
 }
 
-function isValidMove(move) {
-	return move && typeof move === 'string' && move.length >= 4 && /^[a-h][1-8][a-h][1-8]/.test(move);
-}
-
 async function handleGameAnalysis(interaction) {
 	let url = interaction.options.getString('url');
 	let rawPgnText = interaction.options.getString('pgn');
@@ -263,7 +259,9 @@ async function processGameAnalysis(interaction, pgn, createGif) {
 				const gifBuffer = await gifRenderer.createAnalysisGif(pgn, analysisResult, {
 					delay: 1500,
 					size: 400,
-					userId: interaction.user.id
+					userId: interaction.user.id,
+					showEval: true,
+					highlightLastMove: true
 				});
 
 				embed.setImage('attachment://game_analysis.gif');
@@ -339,10 +337,9 @@ export async function handleAnalysisButtons(interaction) {
 			.slice(0, 20)
 			.map((move, index) => {
 				const moveNumber = Math.floor(index / 2) + 1;
-				const color = move.color === 'w' ? '⚪' : '⚫';
-				return `${color} **${moveNumber}.${move.color === 'b' ? '..' : ''} ${
-					move.move
-				}${move.annotation.symbol}** ${move.comment ? `- ${move.comment}` : ''}`;
+				const isWhite = move.color === 'white';
+				const movePrefix = isWhite ? `${moveNumber}.` : `${moveNumber}...`;
+				return `${isWhite ? '⚪' : '⚫'} **${movePrefix} ${move.move}${move.annotation.symbol}** ${move.comment ? `- ${move.comment}` : ''}`;
 			})
 			.join('\n');
 
@@ -375,7 +372,7 @@ async function createGameViewer(interaction, cache) {
 	analysisResult.moves.forEach((move, index) => {
 		analysisMap.set(index + 1, {
 			eval: move.evaluation / 100,
-			bestMove: isValidMove(move.bestMove) ? move.bestMove : null,
+			bestMove: move.bestMove,
 			annotation: move.annotation,
 			comment: move.comment,
 		});
@@ -397,21 +394,23 @@ async function createGameViewer(interaction, cache) {
 			watermark: 'echolyn analysis',
 		};
 
-		if (analysisData?.bestMove) {
+		if (analysisData?.bestMove && analysisData.bestMove.length >= 4) {
 			drawOptions.bestMove = analysisData.bestMove;
 		}
 
-		if (idx > 0 && analysisData) {
+		if (idx > 0) {
 			const lastMove = moves[idx - 1];
-			if (lastMove) {
+			if (lastMove && lastMove.from && lastMove.to) {
 				drawOptions.lastMove = {
-					from: lastMove.from || '',
-					to: lastMove.to || ''
+					from: lastMove.from,
+					to: lastMove.to
 				};
+			}
 
-				if (analysisData.annotation.symbol && analysisData.annotation.symbol !== '!' && analysisData.annotation.symbol !== '') {
+			if (analysisData && analysisData.annotation.symbol && analysisData.annotation.symbol !== '!' && analysisData.annotation.symbol !== '') {
+				if (lastMove && lastMove.to) {
 					drawOptions.annotatedMove = {
-						square: lastMove.to || '',
+						square: lastMove.to,
 						color: getAnnotationColor(analysisData.annotation.symbol)
 					};
 					drawOptions.annotation = analysisData.annotation.symbol;

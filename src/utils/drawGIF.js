@@ -10,6 +10,19 @@ import { PassThrough } from 'node:stream';
 
 const LOG_NAME = 'render.gif';
 
+function getAnnotationColor(symbol) {
+	const colors = {
+		'??': '#ff4444',
+		'?': '#ff8800',
+		'?!': '#ffcc00',
+		'!': 'transparent',
+		'!!': '#0066cc',
+		'★': '#00aaff',
+		'': 'transparent',
+	};
+	return colors[symbol] || 'transparent';
+}
+
 export class GifRenderer {
 	constructor() {
 		this.defaultOptions = {
@@ -44,7 +57,6 @@ export class GifRenderer {
 			tmpDir = tmpObj.path;
 			cleanup = tmpObj.cleanup;
 
-			// write all frames to png files
 			await Promise.all(
 				frames.map(async (frame, i) => {
 					const filename = path.join(
@@ -59,7 +71,6 @@ export class GifRenderer {
 			const palettePath = path.join(tmpDir, 'palette.png');
 			const fps = 1000 / config.delay;
 
-			// step 1: generate palette
 			await new Promise((resolve, reject) => {
 				ffmpeg()
 					.input(inputPattern)
@@ -73,7 +84,6 @@ export class GifRenderer {
 					.run();
 			});
 
-			// step 2: use palette to make gif
 			return await new Promise((resolve, reject) => {
 				const outputStream = new PassThrough();
 				const buffers = [];
@@ -126,10 +136,17 @@ export class GifRenderer {
 		const white = headers.White || headers.WhitePlayer || 'White';
 		const black = headers.Black || headers.BlackPlayer || 'Black';
 
-		const maxFrames = fens.length;
-		const step = 1;
+		const baseOptions = {
+			size: config.size,
+			flip: config.flip || false,
+			players: { white, black },
+			watermark: config.watermark || 'echolyn',
+			showEval: true,
+			eval: 0.2,
+			...config.boardOptions,
+		};
 
-		for (let i = 0; i < fens.length; i += step) {
+		for (let i = 0; i < fens.length; i++) {
 			const fen = fens[i];
 			const currentMeta = meta[i] || {};
 			const currentMove = i > 0 ? moves[i - 1] : null;
@@ -138,17 +155,16 @@ export class GifRenderer {
 			const history = chess.history({ verbose: true });
 			const lastMove = history.length > 0 ? history[history.length - 1] : null;
 
-			const boardOptions = {
-				size: config.size,
-				flip: config.flip || false,
-				players: { white, black },
-				clocks: currentMeta.clocks || {},
-				watermark: config.watermark || 'echolyn',
-				...config.boardOptions,
-			};
+			const boardOptions = { ...baseOptions };
 
-			if (config.showEval && currentMeta.eval !== undefined) {
+			if (currentMeta.clocks) {
+				boardOptions.clocks = currentMeta.clocks;
+			}
+
+			if (currentMeta.eval !== undefined) {
 				boardOptions.eval = currentMeta.eval;
+			} else if (i === 0) {
+				boardOptions.eval = 0.2;
 			}
 
 			if (config.showAnnotations && currentMove?.glyph) {
@@ -166,7 +182,7 @@ export class GifRenderer {
 				boardOptions.checkSquare = currentMeta.checkSquare;
 			}
 
-			if (currentMeta.bestMove) {
+			if (currentMeta.bestMove && currentMeta.bestMove.length >= 4) {
 				boardOptions.bestMove = currentMeta.bestMove;
 			}
 
@@ -198,10 +214,17 @@ export class GifRenderer {
 		const white = headers.White || headers.WhitePlayer || 'White';
 		const black = headers.Black || headers.BlackPlayer || 'Black';
 
-		const maxFrames = fens.length;
-		const step = 1;
+		const baseOptions = {
+			size: config.size,
+			flip: config.flip || false,
+			players: { white, black },
+			watermark: 'echolyn analysis',
+			showEval: true,
+			eval: 0.2,
+			...config.boardOptions,
+		};
 
-		for (let i = 0; i < fens.length; i += step) {
+		for (let i = 0; i < fens.length; i++) {
 			const fen = fens[i];
 			const currentMeta = meta[i] || {};
 			const analysisMove = analysisData.moves?.[i - 1];
@@ -210,21 +233,35 @@ export class GifRenderer {
 			const history = chess.history({ verbose: true });
 			const lastMove = history.length > 0 ? history[history.length - 1] : null;
 
-			const boardOptions = {
-				size: config.size,
-				flip: config.flip || false,
-				players: { white, black },
-				clocks: currentMeta.clocks || {},
-				watermark: 'echolyn analysis',
-				...config.boardOptions,
-			};
+			const boardOptions = { ...baseOptions };
 
-			if (analysisMove) {
+			if (currentMeta.clocks) {
+				boardOptions.clocks = currentMeta.clocks;
+			}
+			if (analysisMove && analysisMove.evaluation !== undefined) {
 				boardOptions.eval = analysisMove.evaluation / 100;
-				boardOptions.annotation = analysisMove.annotation.symbol;
-				boardOptions.bestMove = analysisMove.bestMove;
+
+				if (analysisMove.annotation && analysisMove.annotation.symbol) {
+					boardOptions.annotation = analysisMove.annotation.symbol;
+					if (
+						lastMove &&
+						lastMove.to &&
+						analysisMove.annotation.symbol !== '!' &&
+						analysisMove.annotation.symbol !== ''
+					) {
+						boardOptions.annotatedMove = {
+							square: lastMove.to,
+							color: getAnnotationColor(analysisMove.annotation.symbol),
+						};
+					}
+				}
+				if (analysisMove.bestMove && analysisMove.bestMove.length >= 4) {
+					boardOptions.bestMove = analysisMove.bestMove;
+				}
 			} else if (currentMeta.eval !== undefined) {
 				boardOptions.eval = currentMeta.eval;
+			} else if (i === 0) {
+				boardOptions.eval = 0.2;
 			}
 
 			if (config.highlightLastMove && lastMove) {
