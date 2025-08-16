@@ -2,7 +2,7 @@ export const openingsDatabase = {
   'italian-game': {
     name: 'Italian Game',
     eco: 'C50-C59',
-    moves: ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4'],
+    moves: ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'c3', 'Nf6', 'd3', 'O-O', 'O-O'],
     description: 'One of the oldest chess openings, focusing on rapid development and control of the center. White develops the bishop to c4, targeting the f7 square.',
     explanation: 'The Italian Game emphasizes quick development and central control. The bishop on c4 puts immediate pressure on Black\'s kingside, particularly the weak f7 square. This opening leads to tactical, open positions where both sides can develop their pieces naturally.',
     history: {

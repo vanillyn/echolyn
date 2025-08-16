@@ -1,8 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { Chess } from 'chessops/chess';
 import { parseFen, makeFen } from 'chessops/fen';
-import { drawBoard } from '../utils/drawBoard';
-import { hexToRgba, isCheckmate, isInCheck } from '../utils/utils';
+import { drawBoard, getUserConfig } from '../utils/drawBoard';
 
 export default {
 	data: new SlashCommandBuilder()
@@ -77,17 +76,10 @@ export default {
 			);
 		}
 
-		const options = {
-			lightColor: hexToRgba(interaction.options.getString('light_color')),
-			darkColor: hexToRgba(interaction.options.getString('dark_color')),
-			borderColor: hexToRgba(interaction.options.getString('border_color')),
-			checkColor: hexToRgba(interaction.options.getString('check_color')),
-			pieceSet: interaction.options.getString('piece_set') || 'pixel',
-		};
-
 		try {
 			const checkSquare = pos.isCheck() ? getKingSquare(pos, pos.turn) : null;
-			const buffer = await drawBoard(fen, checkSquare, pos.isCheckmate(), options);
+			const currentConfig = await getUserConfig(interaction.user.id)
+			 const buffer = await drawBoard(fen, {...currentConfig, checkSquare}, interaction.user.id)
 			
 			let statusText = '';
 			if (pos.isCheckmate()) {

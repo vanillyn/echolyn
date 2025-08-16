@@ -64,6 +64,23 @@ export default {
 	},
 };
 
+function getAnnotationColor(symbol) {
+	const colors = {
+		'??': '#ff4444',
+		'?': '#ff8800',
+		'?!': '#ffcc00',
+		'!': 'transparent',
+		'!!': '#0066cc',
+		'★': '#00aaff',
+		'': 'transparent'
+	};
+	return colors[symbol] || 'transparent';
+}
+
+function isValidMove(move) {
+	return move && typeof move === 'string' && move.length >= 4 && /^[a-h][1-8][a-h][1-8]/.test(move);
+}
+
 async function handleGameAnalysis(interaction) {
 	let url = interaction.options.getString('url');
 	let rawPgnText = interaction.options.getString('pgn');
@@ -358,7 +375,7 @@ async function createGameViewer(interaction, cache) {
 	analysisResult.moves.forEach((move, index) => {
 		analysisMap.set(index + 1, {
 			eval: move.evaluation / 100,
-			bestMove: move.bestMove,
+			bestMove: isValidMove(move.bestMove) ? move.bestMove : null,
 			annotation: move.annotation,
 			comment: move.comment,
 		});
@@ -374,12 +391,33 @@ async function createGameViewer(interaction, cache) {
 			checkSquare: m.checkSquare || null,
 			inCheck: Boolean(m.inCheck),
 			isCheckmate: Boolean(m.isCheckmate),
-			eval: analysisData?.eval || m.eval,
-			bestMove: analysisData?.bestMove,
+			eval: idx === 0 ? 0.2 : (analysisData?.eval || m.eval || 0),
 			clocks: m.clocks,
 			players: { white, black },
 			watermark: 'echolyn analysis',
 		};
+
+		if (analysisData?.bestMove) {
+			drawOptions.bestMove = analysisData.bestMove;
+		}
+
+		if (idx > 0 && analysisData) {
+			const lastMove = moves[idx - 1];
+			if (lastMove) {
+				drawOptions.lastMove = {
+					from: lastMove.from || '',
+					to: lastMove.to || ''
+				};
+
+				if (analysisData.annotation.symbol && analysisData.annotation.symbol !== '!' && analysisData.annotation.symbol !== '') {
+					drawOptions.annotatedMove = {
+						square: lastMove.to || '',
+						color: getAnnotationColor(analysisData.annotation.symbol)
+					};
+					drawOptions.annotation = analysisData.annotation.symbol;
+				}
+			}
+		}
 
 		const buffer = await drawBoard(fen, drawOptions);
 		const attachment = new AttachmentBuilder(buffer, { name: 'board.png' });

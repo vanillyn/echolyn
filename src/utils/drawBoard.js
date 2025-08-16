@@ -17,7 +17,7 @@ const DEFAULT_CONFIG = {
 	evalBarWhite: '#f0f0f0',
 	evalBarBlack: '#333333',
 	evalBarBorder: '#555555',
-	evalTextColor: '#888888',
+	evalTextColor: '#333333',
 	watermarkColor: 'rgba(255,255,255,0.7)',
 	arrowColor: 'rgba(208, 228, 208, 0.8)',
 	checkColor: 'rgba(255, 0, 0, 0.4)',
@@ -102,6 +102,7 @@ class ChessBoardRenderer {
 			lastMove,
 			highlights = [],
 			annotation,
+			annotatedMove,
 			lightColor,
 			darkColor,
 			borderColor,
@@ -200,6 +201,10 @@ class ChessBoardRenderer {
       background-color: ${highlightColor} !important;
       ${shadowEnabled ? `box-shadow: inset 0 0 8px rgba(100,200,100,0.4);` : ''}
     }
+    .square.annotation-highlight {
+      ${shadowEnabled ? `box-shadow: inset 0 0 12px var(--annotation-color);` : ''}
+      border: 3px solid var(--annotation-color) !important;
+    }
     .piece { 
       width: ${squareSize * 0.9}px; 
       height: ${squareSize * 0.9}px;
@@ -276,17 +281,22 @@ class ChessBoardRenderer {
       position: absolute;
       width: 100%;
       text-align: center;
-      top: 50%;
-      transform: translateY(-50%);
-      font-size: 11px;
+      font-size: 10px;
       color: ${evalTextColor};
       font-weight: bold;
       font-family: 'Courier New', monospace;
-      text-shadow: 1px 1px 1px rgba(255,255,255,0.8);
-      background: rgba(255,255,255,0.9);
-      margin: 0 4px;
+      text-shadow: 0 0 2px rgba(255,255,255,0.8);
       border-radius: 2px;
-      padding: 1px 0;
+      padding: 1px 1px;
+      z-index: 10;
+    }
+    .eval-label.positive {
+	  color: #000000;
+      bottom: 4px;
+    }
+    .eval-label.negative {
+	  color: #FFFFFF;
+      top: 4px;
     }
     .watermark {
       position: absolute;
@@ -297,14 +307,20 @@ class ChessBoardRenderer {
       font-weight: 500;
       text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
     }
-    .annotation {
+    .annotation-symbol {
       position: absolute;
-      top: 6px;
-      left: 12px;
-      font-size: 18px;
+      font-size: 16px;
       font-weight: bold;
-      color: ${watermarkColor};
-      text-shadow: 1px 1px 1px rgba(0,0,0,0.8);
+      color: #ffffff;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+      background: rgba(0,0,0,0.6);
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
     }
     .arrow {
       position: absolute;
@@ -337,11 +353,12 @@ class ChessBoardRenderer {
       <div class="board-section">
         ${showPlayers ? this.renderPlayers(players, clocks, flip, true, options) : ''}
         <div class="chess-board">
-          ${this.renderSquares(size, flip, checkSquare, lastMove, highlights, options)}
+          ${this.renderSquares(size, flip, checkSquare, lastMove, highlights, annotatedMove, options)}
           ${this.renderCoords(size, flip, showCoordinates, coordinatePosition)}
           ${await this.renderPieces(fen, size, flip, pieceImages)}
+          ${annotatedMove ? this.renderAnnotationSymbol(annotatedMove, annotation, size, flip) : ''}
           ${
-				bestMove
+				bestMove && bestMove.length >= 4
 					? this.renderArrow(bestMove, size, flip, arrowColor, arrowStyle, shadowEnabled)
 					: ''
 			}
@@ -351,7 +368,6 @@ class ChessBoardRenderer {
       ${showEval ? this.renderEval(evaluation, size, options) : ''}
     </div>
     <div class="watermark">${watermark}</div>
-    ${annotation ? `<div class="annotation">${annotation}</div>` : ''}
   </div>
 </body>
 </html>`;
@@ -370,7 +386,7 @@ class ChessBoardRenderer {
     </div>`;
 	}
 
-	renderSquares(size, flip, checkSquare, lastMove, highlights = []) {
+	renderSquares(size, flip, checkSquare, lastMove, highlights = [], annotatedMove) {
 		const squareSize = size / 8;
 		let squares = '';
 
@@ -386,6 +402,7 @@ class ChessBoardRenderer {
 				const square = String.fromCharCode(97 + fenFile) + (8 - fenRank);
 
 				let classes = `square ${isLight ? 'light' : 'dark'}`;
+				let style = `left:${left}px; top:${top}px;`;
 
 				let isCheck = false;
 				if (checkSquare) {
@@ -405,12 +422,29 @@ class ChessBoardRenderer {
 					classes += ' highlight';
 				}
 
-				squares += `<div class="${classes}" 
-        style="left:${left}px; top:${top}px;"></div>`;
+				if (annotatedMove && annotatedMove.square === square && annotatedMove.color !== 'transparent') {
+					classes += ' annotation-highlight';
+					style += ` --annotation-color: ${annotatedMove.color};`;
+				}
+
+				squares += `<div class="${classes}" style="${style}"></div>`;
 			}
 		}
 
 		return squares;
+	}
+
+	renderAnnotationSymbol(annotatedMove, annotation, size, flip) {
+		if (!annotatedMove || !annotation || annotation === '!' || annotation === '') return '';
+
+		const coords = this.algebraicToPixels(annotatedMove.square, size, flip);
+		if (!coords) return '';
+
+		const squareSize = size / 8;
+		const symbolX = coords.x + squareSize * 0.25;
+		const symbolY = coords.y - squareSize * 0.25;
+
+		return `<div class="annotation-symbol" style="left: ${symbolX}px; top: ${symbolY}px;">${annotation}</div>`;
 	}
 
 	renderCoords(size, flip, showCoordinates, coordinatePosition) {
@@ -490,16 +524,19 @@ class ChessBoardRenderer {
 	renderEval(evaluation, size, options) {
 		let whitePercent = 0.5;
 		let label = '0.00';
+		let isPositive = true;
 
 		if (typeof evaluation === 'number') {
 			if (Math.abs(evaluation) >= 100) {
 				const mateIn = Math.abs(evaluation) - 100;
 				label = evaluation > 0 ? `M${mateIn}` : `M-${mateIn}`;
 				whitePercent = evaluation > 0 ? 0.95 : 0.05;
+				isPositive = evaluation > 0;
 			} else {
 				const clamped = Math.max(-10, Math.min(10, evaluation));
 				whitePercent = (clamped + 10) / 20;
 				label = (evaluation >= 0 ? '+' : '') + evaluation.toFixed(1);
+				isPositive = evaluation >= 0;
 			}
 		}
 
@@ -509,7 +546,7 @@ class ChessBoardRenderer {
 		return `<div class="eval-bar">
       ${blackHeight > 0 ? `<div class="eval-black" style="height: ${blackHeight}px;"></div>` : ''}
       ${whiteHeight > 0 ? `<div class="eval-white" style="height: ${whiteHeight}px;"></div>` : ''}
-      <div class="eval-label">${label}</div>
+      <div class="eval-label ${isPositive ? 'positive' : 'negative'}">${label}</div>
     </div>`;
 	}
 
@@ -525,13 +562,14 @@ class ChessBoardRenderer {
 		if (!fromCoords || !toCoords) return '';
 
 		const strokeWidth = arrowStyle === 'thick' ? 8 : arrowStyle === 'thin' ? 4 : 6;
+		const arrowHeadSize = strokeWidth * 2;
 
 		return `
       <svg class="arrow" style="width: ${size}px; height: ${size}px; position: absolute; top: 0; left: 0;">
         <defs>
-          <marker id="arrowhead" markerWidth="30" markerHeight="20" 
-                  refX="13" refY="5" orient="auto" markerUnits="userSpaceOnUse">
-            <polygon points="0 0, 15 5, 0 10" fill="${arrowColor}"/>
+          <marker id="arrowhead" markerWidth="${arrowHeadSize}" markerHeight="${arrowHeadSize}" 
+                  refX="${arrowHeadSize - 2}" refY="${arrowHeadSize/2}" orient="auto" markerUnits="userSpaceOnUse">
+            <polygon points="0 0, ${arrowHeadSize} ${arrowHeadSize/2}, 0 ${arrowHeadSize}" fill="${arrowColor}"/>
           </marker>
         </defs>
         <line x1="${fromCoords.x}" y1="${fromCoords.y}" 

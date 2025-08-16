@@ -1,104 +1,123 @@
 import { analyzePosition, LOG_NAME } from './stockfish.js';
-import { Chess } from 'chessops/chess';
-import { parseFen, makeFen } from 'chessops/fen';
-import { makeUci } from 'chessops/util';
+import { Chess } from 'chess.js';
 import { buildFensAndMetaFromPgn } from '../parsePGN.js';
 import { log } from '../../init.js';
 
 export class Analysis {
 	constructor() {
-		this.searchTime = 2000;
-		this.concurrency = 4;
+		this.searchTime = 3000;
+		this.concurrency = 8;
 		this.annotations = {
 			BLUNDER: { symbol: '??', threshold: -200, description: 'Blunder' },
 			MISTAKE: { symbol: '?', threshold: -100, description: 'Mistake' },
 			INACCURACY: { symbol: '?!', threshold: -50, description: 'Inaccuracy' },
-			GOOD: { symbol: '!', description: 'Good' },
-			EXCELLENT: { symbol: '!!', description: 'Great' },
-			BRILLIANT: { symbol: '★', description: 'Brilliant' },
-			BOOK: { symbol: '', description: 'Book' },
+			GOOD: { symbol: '✓', description: 'Good' },
+			EXCELLENT: { symbol: '!', description: 'Great' },
+			BRILLIANT: { symbol: '!!', description: 'Brilliant' },
+			BOOK: { symbol: '📓', description: 'Book' },
 		};
 	}
 
 	async analyzeGame(pgn, options = {}) {
-		log.debug(`${LOG_NAME}: analyzing game with ${this.concurrency} instances`);
-		const parsed = buildFensAndMetaFromPgn(pgn);
-		if (!parsed || !parsed.fens || parsed.fens.length === 0) {
-			throw new Error('Could not parse PGN');
+		try {
+			log.debug(`${LOG_NAME}: analyzing game with ${this.concurrency} instances`);
+			const parsed = buildFensAndMetaFromPgn(pgn);
+			if (!parsed || !parsed.fens || parsed.fens.length === 0) {
+				throw new Error('Could not parse PGN');
+			}
+
+			const { fens, moves: sanMoves } = parsed;
+			const chess = new Chess();
+
+			const startMove = options.skipOpening !== false ? Math.min(6, Math.floor(fens.length / 4)) : 1;
+			
+			const positionsToAnalyze = [];
+			for (let i = startMove; i < fens.length; i++) {
+				try {
+					chess.load(fens[i - 1]);
+					
+					if (!sanMoves[i - 1] || !sanMoves[i - 1].san) {
+						continue;
+					}
+					
+					const move = chess.move(sanMoves[i - 1].san, { sloppy: true });
+					if (!move) continue;
+					
+					positionsToAnalyze.push({
+						index: i,
+						beforeFen: fens[i - 1],
+						afterFen: fens[i],
+						move: sanMoves[i - 1],
+						playedMove: move.from + move.to + (move.promotion || '')
+					});
+				} catch (error) {
+					log.error(`${LOG_NAME}: Error processing move ${i}: ${error.message}`);
+					continue;
+				}
+			}
+
+			if (positionsToAnalyze.length === 0) {
+				throw new Error('No valid positions found to analyze');
+			}
+
+			const analysisResults = await this.analyzePositionsBatch(positionsToAnalyze);
+
+			const analysis = {
+				moves: [],
+				summary: {
+					blunders: { white: 0, black: 0 },
+					mistakes: { white: 0, black: 0 },
+					inaccuracies: { white: 0, black: 0 },
+					good: { white: 0, black: 0 },
+					excellent: { white: 0, black: 0 },
+					brilliant: { white: 0, black: 0 },
+				},
+				accuracy: { white: 0, black: 0 },
+			};
+
+			let prevEval = 0;
+
+			for (const result of analysisResults) {
+				if (!result || !result.move) continue;
+				
+				const { move, beforeAnalysis, afterAnalysis, index, playedMove } = result;
+				
+				try {
+					chess.load(result.beforeFen);
+					const moveColor = chess.turn() === 'w' ? 'white' : 'black';
+
+					const evaluation = this.evaluateMove(
+						beforeAnalysis,
+						afterAnalysis,
+						moveColor,
+						prevEval,
+						playedMove
+					);
+
+					analysis.moves.push({
+						move: move.san,
+						color: moveColor,
+						fen: result.afterFen,
+						evaluation: evaluation.eval,
+						bestMove: beforeAnalysis?.bestMove,
+						annotation: evaluation.annotation,
+						comment: evaluation.comment,
+					});
+
+					this.updateSummary(analysis.summary, evaluation.annotation, moveColor);
+					prevEval = evaluation.eval;
+				} catch (error) {
+					log.error(`${LOG_NAME}: Error evaluating move ${index}: ${error.message}`);
+					continue;
+				}
+			}
+
+			analysis.accuracy = this.calculateAccuracy(analysis.moves);
+			return analysis;
+		} catch (error) {
+			log.error(`${LOG_NAME}: Game analysis failed: ${error.message}`, error.stack);
+			throw error;
 		}
-
-		const { fens, moves: sanMoves } = parsed;
-		let pos = Chess.default();
-
-		const startMove = options.skipOpening !== false ? Math.min(6, Math.floor(fens.length / 4)) : 1;
-		
-		const positionsToAnalyze = [];
-		for (let i = startMove; i < fens.length; i++) {
-			const setup = parseFen(fens[i - 1]).unwrap();
-			pos = Chess.fromSetup(setup).unwrap();
-			
-			const move = pos.parseSan(sanMoves[i - 1].san);
-			if (!move) continue;
-			
-			const playedMove = makeUci(move);
-			
-			positionsToAnalyze.push({
-				index: i,
-				beforeFen: fens[i - 1],
-				afterFen: fens[i],
-				move: sanMoves[i - 1],
-				playedMove
-			});
-		}
-
-		const analysisResults = await this.analyzePositionsBatch(positionsToAnalyze);
-
-		const analysis = {
-			moves: [],
-			summary: {
-				blunders: { white: 0, black: 0 },
-				mistakes: { white: 0, black: 0 },
-				inaccuracies: { white: 0, black: 0 },
-				good: { white: 0, black: 0 },
-				excellent: { white: 0, black: 0 },
-				brilliant: { white: 0, black: 0 },
-			},
-			accuracy: { white: 0, black: 0 },
-		};
-
-		let prevEval = 0;
-
-		for (const result of analysisResults) {
-			const { move, beforeAnalysis, afterAnalysis, index, playedMove } = result;
-			
-			const setup = parseFen(result.beforeFen).unwrap();
-			pos = Chess.fromSetup(setup).unwrap();
-			const moveColor = pos.turn;
-
-			const evaluation = this.evaluateMove(
-				beforeAnalysis,
-				afterAnalysis,
-				moveColor,
-				prevEval,
-				playedMove
-			);
-
-			analysis.moves.push({
-				move: move.san,
-				color: moveColor,
-				fen: result.afterFen,
-				evaluation: evaluation.eval,
-				bestMove: beforeAnalysis?.bestMove,
-				annotation: evaluation.annotation,
-				comment: evaluation.comment,
-			});
-
-			this.updateSummary(analysis.summary, evaluation.annotation, moveColor);
-			prevEval = evaluation.eval;
-		}
-
-		analysis.accuracy = this.calculateAccuracy(analysis.moves);
-		return analysis;
 	}
 
 	async analyzePositionsBatch(positions) {
@@ -118,27 +137,33 @@ export class Analysis {
 						beforeFen: pos.beforeFen,
 						afterFen: pos.afterFen,
 						move: pos.move,
+						playedMove: pos.playedMove,
 						beforeAnalysis,
 						afterAnalysis: null 
 					};
 				} catch (error) {
-					console.error(`Analysis failed for position ${pos.index}:`, error);
+					log.error(`Analysis failed for position ${pos.index}: ${error.message}`);
 					return {
 						index: pos.index,
 						beforeFen: pos.beforeFen,
 						afterFen: pos.afterFen,
 						move: pos.move,
+						playedMove: pos.playedMove,
 						beforeAnalysis: null,
 						afterAnalysis: null
 					};
 				}
 			});
 
-			const batchResults = await Promise.all(batchPromises);
-			results.push(...batchResults);
+			try {
+				const batchResults = await Promise.all(batchPromises);
+				results.push(...batchResults);
+			} catch (error) {
+				log.error(`${LOG_NAME}: Batch analysis failed: ${error.message}`);
+			}
 		}
 
-		return results.sort((a, b) => a.index - b.index);
+		return results.filter(r => r !== null).sort((a, b) => a.index - b.index);
 	}
 
 	evaluateMove(beforeAnalysis, afterAnalysis, color, prevEval, playedMove = null) {
@@ -254,13 +279,13 @@ export class Analysis {
 			case '?!':
 				summary.inaccuracies[colorKey]++;
 				break;
-			case '!':
+			case '✓':
 				summary.good[colorKey]++;
 				break;
-			case '!!':
+			case '!':
 				summary.excellent[colorKey]++;
 				break;
-			case '★':
+			case '!!':
 				summary.brilliant[colorKey]++;
 				break;
 		}
@@ -285,13 +310,13 @@ export class Analysis {
 					case '?!':
 						totalPenalty += 2;
 						break;
-					case '!':
+					case '✓':
 						totalPenalty -= 0.5;
 						break;
-					case '!!':
+					case '!':
 						totalPenalty -= 1;
 						break;
-					case '★':
+					case '!!':
 						totalPenalty -= 2;
 						break;
 				}
@@ -308,21 +333,28 @@ export class Analysis {
 	}
 
 	async getPositionAnalysis(fen, depth = 20) {
-		const analysisResult = await analyzePosition(fen, { searchTime: this.searchTime });
+		try {
+			const analysisResult = await analyzePosition(fen, { searchTime: this.searchTime });
 
-		return {
-			fen,
-			eval: analysisResult.eval,
-			mateIn: analysisResult.mateIn,
-			bestMove: analysisResult.bestMove,
-			evaluation: this.getPositionEvaluation(analysisResult.eval, analysisResult.mateIn),
-		};
+			return {
+				fen,
+				eval: analysisResult.eval || 0,
+				mateIn: analysisResult.mateIn,
+				bestMove: analysisResult.bestMove,
+				evaluation: this.getPositionEvaluation(analysisResult.eval, analysisResult.mateIn),
+			};
+		} catch (error) {
+			log.error(`${LOG_NAME}: Position analysis failed: ${error.message}`);
+			throw error;
+		}
 	}
 
 	getPositionEvaluation(sfeval, mateIn) {
 		if (mateIn !== null) {
 			return mateIn > 0 ? `Mate in ${mateIn}` : `Mate in ${Math.abs(mateIn)}`;
 		}
+
+		if (!sfeval) sfeval = 0;
 
 		if (Math.abs(sfeval) >= 5) {
 			return sfeval > 0 ? 'White is winning' : 'Black is winning';

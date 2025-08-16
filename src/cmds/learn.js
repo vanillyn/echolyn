@@ -2,6 +2,7 @@ import { SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRo
 import { gifRenderer } from '../utils/drawGIF.js';
 import { openingsDatabase, searchOpenings } from '../utils/game/openings.js';
 import { log } from '../init.js';
+import { getUserConfig } from '../utils/drawBoard.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -22,6 +23,12 @@ export default {
               { name: 'Ruy López', value: 'ruy-lopez' },
               { name: 'Sicilian Defense', value: 'sicilian-defense' }
             )
+        )
+        .addIntegerOption(option =>
+          option
+            .setName('delay')
+            .setDescription('set the delay between moves')
+              .setRequired(false)
         )
     )
     .addSubcommand(subcommand =>
@@ -51,10 +58,11 @@ export default {
 
       try {
         const gifBuffer = await gifRenderer.createOpeningGif(opening.moves, undefined, {
-          delay: 2500,
+          delay: interaction.options.getInteger('delay'),
           boardOptions: {
             size: 400,
-            showCoordinates: true
+            showCoordinates: true,
+            ...await getUserConfig(interaction.user.id)
           }
         });
 
