@@ -370,8 +370,8 @@ async function createGameViewer(interaction, cache) {
 	const analysisMap = new Map();
 
 	analysisResult.moves.forEach((move, index) => {
-		analysisMap.set(index + 1, {
-			eval: move.evaluation / 100,
+		analysisMap.set(move.index, {
+			eval: move.evaluation,
 			bestMove: move.bestMove,
 			annotation: move.annotation,
 			comment: move.comment,

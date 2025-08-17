@@ -2,9 +2,9 @@ import { spawn } from 'node:child_process';
 import { log } from '../../init';
 
 const STOCKFISH_CONFIG = {
-	threads: Math.min(6, require('os').cpus().length),
-	hashSize: 512,
-	depth: 20,
+	threads: Math.min(4, require('os').cpus().length),
+	hashSize: 1024,
+	depth: 12,
 	multiPV: 1,
 };
 

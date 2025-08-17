@@ -6,7 +6,7 @@ import { log } from '../../init.js';
 export class Analysis {
 	constructor() {
 		this.searchTime = 2000;
-		this.concurrency = 12;
+		this.concurrency = 4;
 		this.annotations = {
 			BLUNDER: { symbol: '??', threshold: -200, description: 'Blunder' },
 			MISTAKE: { symbol: '?', threshold: -100, description: 'Mistake' },
@@ -176,11 +176,11 @@ export class Analysis {
 			beforeAnalysis.mateIn,
 			color
 		);
-
+		const afterColor = moveColor === 'white' ? 'black' : 'white';
 		const afterEval = this.normalizeEval(
 			afterAnalysis.eval,
 			afterAnalysis.mateIn,
-			color
+			afterColor
 		);
 
 		const bestMove = beforeAnalysis.bestMove;
@@ -196,25 +196,29 @@ export class Analysis {
 		}
 
 		const evalDiff = afterEval - beforeEval;
+		const playerDiff = (moveColor === 'white'? evalDiff : -evalDiff);
 
 		let annotation;
 		let comment;
 
 		if (evalDiff <= -300) {  
 			annotation = this.annotations.BLUNDER;
-			comment = `Loses ${Math.abs(Math.round(evalDiff / 100))} pawns`;
-		} else if (evalDiff <= -150) {
+			comment = `Loses ${Math.abs(Math.round(playerDiff))} centipawns`;
+		} else if (playerDiff <= -150) {
 			annotation = this.annotations.MISTAKE;
-			comment = `Loses ${Math.abs(Math.round(evalDiff / 100))} pawns`;
-		} else if (evalDiff <= -75) {
+			comment = `Loses ${Math.abs(Math.round(playerDiff))} centipawns`;
+		} else if (playerDiff <= -75) {
 			annotation = this.annotations.INACCURACY;
-			comment = `Loses ${Math.abs((evalDiff / 100).toFixed(1))} pawns`;
-		} else if (evalDiff >= 100) {
+			comment = `Loses ${Math.abs((playerDiff).toFixed(1))} centipawns`;
+		} else if (playerDiff >= 100) {
 			annotation = this.annotations.EXCELLENT;
-			comment = `Gains ${(evalDiff / 100).toFixed(1)} pawns`;
-		} else if (evalDiff >= 50) {
+			comment = `Gains ${(playerDiff).toFixed(1)} centipawns`;
+		} else if (playerDiff >= 200 && isbestMove){
+			annotation = this.annotations.BRILLIANT;
+			comment = `Gains ${(playerDIff).toFixed(1)} centipawns, brilliant!`
+		} else if (playerDiff >= 50) {
 			annotation = this.annotations.GOOD;
-			comment = `Gains ${(evalDiff / 100).toFixed(1)} pawns`;
+			comment = `Gains ${(playerDiff).toFixed(1)} centipawns`;
 		} else {
 			annotation = this.annotations.GOOD;
 			comment = isbestMove ? 'Best move' : 'Good move';

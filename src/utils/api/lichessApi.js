@@ -134,7 +134,6 @@ export async function fetchUserGamesPgn(username, max = 10) {
 }
 
 export async function fetchLichessPgn(gameId, clocks = true, evals = true, moves = true) {
-  log.debug(`Fetching Lichess PGN for game ID: ${gameId}`);
   return apiRequest('GET', `/game/export/${gameId}.pgn`, { clocks, evals, moves }, null, null, 'pgn');
 }
 

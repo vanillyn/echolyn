@@ -8,5 +8,9 @@ export default {
   api_name: {
     lichess: process.env.LICHESS_API_NAME,
     chesscom: process.env.CHESSCOM_API_NAME
+  },
+  default: {
+    white: process.env.WHITE_NAME,
+    black: process.env.BLACK_NAME
   }
 }

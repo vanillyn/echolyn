@@ -6,6 +6,12 @@ import {
 	ButtonBuilder,
 	ButtonStyle,
 	MessageFlags,
+	ContainerBuilder,
+	SectionBuilder,
+	TextDisplayBuilder,
+	SeparatorBuilder,
+	MediaGalleryItemBuilder,
+	MediaGalleryItem,
 } from 'discord.js';
 import { drawBoard } from '../utils/drawBoard.js';
 import { analyzePosition } from '../utils/stockfish/stockfish.js';
@@ -13,6 +19,7 @@ import { log } from '../init.js';
 import { buildFensAndMetaFromPgn } from '../utils/parsePGN.js';
 import { extractChessComId, fetchChessComPgn } from '../utils/api/chesscomApi.js';
 import { extractLichessId, fetchLichessPgn } from '../utils/api/lichessApi.js';
+import config from '../../config.js';
 
 export default {
 	data: new SlashCommandBuilder()
@@ -27,7 +34,6 @@ export default {
 		),
 
 	async execute(interaction) {
-		await interaction.deferReply();
 
 		let url = interaction.options.getString('url');
 		let rawPgnText = interaction.options.getString('pgn');
@@ -126,226 +132,250 @@ export default {
 		}
 	},
 };
-
 async function processPgn(interaction, pgn) {
-	const parsed = buildFensAndMetaFromPgn(pgn);
-	if (!parsed || !parsed.fens || parsed.fens.length === 0) {
-		return interaction.editReply({
-			content: 'could not parse pgn or no moves found',
-			flags: MessageFlags.Ephemeral,
-		});
-	}
+    const parsed = buildFensAndMetaFromPgn(pgn);
+    if (!parsed || !parsed.fens || parsed.fens.length === 0) {
+        return interaction.editReply({
+            content: 'could not parse pgn or no moves found',
+            flags: MessageFlags.Ephemeral,
+        });
+    }
 
-	const { headers, fens, meta, moves } = parsed;
+    const { headers, fens, meta, moves } = parsed;
 
-	const title = headers.Event || 'game';
-	const white = headers.White || headers.WhitePlayer || 'white';
-	const black = headers.Black || headers.BlackPlayer || 'black';
-	const result = headers.Result || 'unknown';
-	const site = headers.Site || '';
-	const date = headers.Date || '';
+    const white = headers.White || headers.WhitePlayer || config.default.white;
+    const black = headers.Black || headers.BlackPlayer || config.default.black;
 
-	let orientationFlipped = false;
-	const stockfishEvals = new Map();
+    let orientationFlipped = false;
+    const stockfishEvals = new Map();
 
-	async function buildEmbedAtIndex(idx) {
-		const fen = fens[idx];
-		const m = meta[idx] || {};
+    async function infoAtIndex(idx) {
+        const m = meta[idx] || {};
+        const stockfishData = stockfishEvals.get(idx);
+        const evalToUse = stockfishData?.eval ?? m.eval;
+        const bestMove = stockfishData?.bestMove;
+        let lastMoveText = '';
+        let commentText = '';
+        let bestMoveText = '';
+        if (m.comment) {
+            let commentValue = m.comment;
+            if (commentValue.length > 1024) commentValue = commentValue.slice(0, 1021) + '...';
+            commentText = `[${commentValue}]`;
+        }
+        if (idx > 0) {
+            const lastMove = moves[idx - 1];
+            const moveNum = Math.ceil(idx / 2);
+            const side = idx % 2 === 1 ? '.' : '...';
+            const moveText = `${moveNum}${side} ${lastMove.san}${lastMove.glyph || ''}`;
+            lastMoveText = ` | ${moveText}`;
+        }
 
-		const stockfishData = stockfishEvals.get(idx);
-		const evalToUse = stockfishData?.eval ?? m.eval;
-		const bestMove = stockfishData?.bestMove;
+        if (stockfishData) {
+            let evalText = '';
+            if (stockfishData.mateIn !== null) {
+                evalText = `mate in ${stockfishData.mateIn}`;
+            } else if (stockfishData.eval !== null) {
+                evalText = `${stockfishData.eval >= 0 ? '+' : ''}${stockfishData.eval.toFixed(2)}`;
+            }
+            bestMoveText = `[${bestMove} (${evalText})]`;
+        }
+        return { commentText, lastMoveText, bestMoveText, bestMove, evalToUse };
+    }
 
-		const drawOptions = {
-			flip: orientationFlipped,
-			checkSquare: m.checkSquare || null,
-			inCheck: Boolean(m.inCheck),
-			isCheckmate: Boolean(m.isCheckmate),
-			eval: evalToUse,
-			bestMove: bestMove,
-			clocks: m.clocks,
-			players: { white, black },
-			watermark: 'echolyn',
-		};
+    async function drawBoardAtIndex(idx) {
+        const fen = fens[idx];
+        const m = meta[idx] || {};
+        const info = await infoAtIndex(idx);
+        const bestMove = info.bestMove;
+        const evalToUse = info.evalToUse;
 
-		const buffer = await drawBoard(fen, drawOptions);
-		const attachment = new AttachmentBuilder(buffer, { name: 'board.png' });
+        const drawOptions = {
+            flip: orientationFlipped,
+            checkSquare: m.checkSquare || null,
+            inCheck: Boolean(m.inCheck),
+            isCheckmate: Boolean(m.isCheckmate),
+            eval: evalToUse,
+            bestMove: bestMove,
+            clocks: m.clocks,
+            players: { white, black },
+            watermark: 'echolyn',
+        };
 
-		const embed = new EmbedBuilder()
-			.setTitle(title)
-			.setColor(0x00aaff)
-			.setImage('attachment://board.png');
+        const buffer = await drawBoard(fen, drawOptions);
+        const attachment = new AttachmentBuilder(buffer, { name: 'board.png' });
 
-		let description = `${white} vs ${black}\nresult: ${result}\nmove: ${idx} / ${
-			fens.length - 1
-		}`;
-		if (idx > 0) {
-			const lastMove = moves[idx - 1];
-			const moveNum = Math.ceil(idx / 2);
-			const side = idx % 2 === 1 ? '.' : '...';
-			const moveText = `${moveNum}${side} ${lastMove.san}${lastMove.glyph || ''}`;
-			description += `\nlast move: ${moveText}`;
-		}
+        return { attachment };
+    }
 
-		if (stockfishData) {
-			let evalText = '';
-			if (stockfishData.mateIn !== null) {
-				evalText = `mate in ${stockfishData.mateIn}`;
-			} else if (stockfishData.eval !== null) {
-				evalText = `${stockfishData.eval >= 0 ? '+' : ''}${stockfishData.eval.toFixed(2)}`;
-			}
-			description += `\nstockfish: ${stockfishData.bestMove} (${evalText})`;
-		}
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('start').setLabel('<<').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('prev').setLabel('<').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('next').setLabel('>').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('end').setLabel('>>').setStyle(ButtonStyle.Primary),
+		new ButtonBuilder().setCustomId('evaluate').setLabel('⚙️').setStyle(ButtonStyle.Success)
+    );
 
-		embed.setDescription(description);
+    const row2 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId('flip')
+            .setLabel('Flip Board')
+            .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId('movelist')
+            .setLabel('Move List')
+            .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('pgn').setLabel('PGN').setStyle(ButtonStyle.Secondary)
+    );
 
-		embed.addFields(
-			{ name: 'event', value: headers.Event || '—', inline: true },
-			{ name: 'site', value: site || '—', inline: true },
-			{ name: 'date', value: date || '—', inline: true }
-		);
-
-		if (headers.WhiteElo || headers.BlackElo) {
-			embed.addFields(
-				{ name: 'white elo', value: headers.WhiteElo || '—', inline: true },
-				{ name: 'black elo', value: headers.BlackElo || '—', inline: true }
+    async function buildInfoSection(idx) {
+        const info = await infoAtIndex(idx);
+        const gameInfo = new SectionBuilder()
+            .addTextDisplayComponents(
+                textDisplay =>
+                    textDisplay.setContent(
+                        `## \`[${idx}/${fens.length - 1}${info.lastMoveText}]\` Viewing ${
+                            headers.Event
+                        } at ${headers.Site || 'the Board'}\n**${headers.Date || ' '}**`
+                    ),
+                textDisplay =>
+                    textDisplay.setContent(
+                        `### **${white}** (${headers.WhiteElo}) vs **${black}** (${headers.BlackElo})\n**Result**: ${headers.Result || 'unknown'}`
+                    ),
+                textDisplay =>
+                    textDisplay.setContent(
+                        `-# comments: \`${info.commentText} ${info.bestMoveText}\``
+                    )
+            )
+			.setThumbnailAccessory(
+				thumbnail => thumbnail
+					.setDescription(`ran by ${interaction.user.name}`)
+					.setURL(interaction.user.avatarURL())
 			);
-		}
+        return gameInfo;
+    }
 
-		if (m.comment) {
-			let commentValue = m.comment;
-			if (commentValue.length > 1024) commentValue = commentValue.slice(0, 1021) + '...';
-			embed.addFields({ name: 'comment', value: commentValue, inline: false });
-		}
+    async function buildGameContainer(idx) {
+        const gameContainer = new ContainerBuilder()
+            .addSectionComponents(await buildInfoSection(idx))
+            .addSeparatorComponents(separator => new SeparatorBuilder())
+			.addActionRowComponents(row)
+            .addMediaGalleryComponents(mediaGallery =>
+                mediaGallery.addItems(MediaGalleryItemBuilder =>
+                    MediaGalleryItemBuilder
+                        .setDescription(`Move ${idx} of the game`)
+                        .setURL('attachment://board.png')
+                )
+            )
+            .addActionRowComponents(row2);
 
-		return { embed, attachment };
-	}
+        return gameContainer;
+    }
 
-	const row = new ActionRowBuilder().addComponents(
-		new ButtonBuilder().setCustomId('start').setLabel('<<').setStyle(ButtonStyle.Primary),
-		new ButtonBuilder().setCustomId('prev').setLabel('<').setStyle(ButtonStyle.Secondary),
-		new ButtonBuilder().setCustomId('next').setLabel('>').setStyle(ButtonStyle.Secondary),
-		new ButtonBuilder().setCustomId('end').setLabel('>>').setStyle(ButtonStyle.Primary)
-	);
+    let idx = 0;
+    const initial = await buildGameContainer(idx);
+    const boardImage = (await drawBoardAtIndex(idx)).attachment;
+    const msg = await interaction.reply({
+        files: [boardImage],
+        components: [initial],
+        flags: MessageFlags.IsComponentsV2,
+    });
 
-	const row2 = new ActionRowBuilder().addComponents(
-		new ButtonBuilder()
-			.setCustomId('flip')
-			.setLabel('Flip Board')
-			.setStyle(ButtonStyle.Secondary),
-		new ButtonBuilder()
-			.setCustomId('evaluate')
-			.setLabel('Evaluate Position')
-			.setStyle(ButtonStyle.Success),
-		new ButtonBuilder()
-			.setCustomId('movelist')
-			.setLabel('Move List')
-			.setStyle(ButtonStyle.Secondary),
-		new ButtonBuilder().setCustomId('pgn').setLabel('PGN').setStyle(ButtonStyle.Secondary)
-	);
+    const collector = msg.createMessageComponentCollector({ time: 10 * 60 * 1000 });
 
-	let idx = 0;
-	const initial = await buildEmbedAtIndex(idx);
-	const msg = await interaction.editReply({
-		content: null,
-		embeds: [initial.embed],
-		files: [initial.attachment],
-		components: [row, row2],
-	});
+    collector.on('collect', async i => {
+        try {
+            if (i.user.id !== interaction.user.id) {
+                return i.reply({
+                    content: 'only the command user can control this viewer',
+                    flags: MessageFlags.Ephemeral,
+                });
+            }
 
-	const collector = msg.createMessageComponentCollector({ time: 10 * 60 * 1000 });
+            if (i.customId === 'start') idx = 0;
+            else if (i.customId === 'prev') idx = Math.max(0, idx - 1);
+            else if (i.customId === 'next') idx = Math.min(fens.length - 1, idx + 1);
+            else if (i.customId === 'end') idx = fens.length - 1;
+            else if (i.customId === 'flip') {
+                orientationFlipped = !orientationFlipped;
+            } else if (i.customId === 'evaluate') {
+                if (stockfishEvals.has(idx)) {
+                    const nextAttachment = (await drawBoardAtIndex(idx)).attachment;
+                    const nextContainer = await buildGameContainer(idx);
+                    return i.update({ components: [nextContainer], files: [nextAttachment] });
+                }
 
-	collector.on('collect', async i => {
-		try {
-			if (i.user.id !== interaction.user.id) {
-				return i.reply({
-					content: 'only the command user can control this viewer',
-					flags: MessageFlags.Ephemeral,
-				});
-			}
+                await i.deferUpdate();
 
-			if (i.customId === 'start') idx = 0;
-			else if (i.customId === 'prev') idx = Math.max(0, idx - 1);
-			else if (i.customId === 'next') idx = Math.min(fens.length - 1, idx + 1);
-			else if (i.customId === 'end') idx = fens.length - 1;
-			else if (i.customId === 'flip') {
-				orientationFlipped = !orientationFlipped;
-			} else if (i.customId === 'evaluate') {
-				if (stockfishEvals.has(idx)) {
-					const next = await buildEmbedAtIndex(idx);
-					return i.update({ embeds: [next.embed], files: [next.attachment] });
-				}
+                try {
+                    const result = await analyzePosition(fens[idx], { searchTime: 3000 });
+                    stockfishEvals.set(idx, result);
+                    const nextAttachment = (await drawBoardAtIndex(idx)).attachment;
+                    const nextContainer = await buildGameContainer(idx);
+                    await i.editReply({ components: [nextContainer], files: [nextAttachment] });
+                } catch (error) {
+                    log.error(`Stockfish evaluation error: ${error}`, error);
+                    await i.followUp({
+                        content: 'Failed to evaluate position',
+                        flags: MessageFlags.Ephemeral,
+                    });
+                }
+                return;
+            } else if (i.customId === 'movelist') {
+                let listText = '';
+                let moveNum = 1;
+                for (let mvIdx = 0; mvIdx < moves.length; mvIdx += 2) {
+                    const whiteMove = moves[mvIdx];
+                    listText += `${moveNum}. ${
+                        whiteMove
+                            ? `${whiteMove.san}${whiteMove.glyph || ''}${
+                                    whiteMove.clean ? ` {${whiteMove.clean}}` : ''
+                              }`
+                            : ''
+                    }`;
+                    const blackMove = moves[mvIdx + 1];
+                    if (blackMove) {
+                        listText += ` ${blackMove.san}${blackMove.glyph || ''}${
+                            blackMove.clean ? ` {${blackMove.clean}}` : ''
+                        }`;
+                    }
+                    listText += '\n';
+                    moveNum++;
+                }
+                if (listText.length > 1900) listText = listText.slice(0, 1900) + '\n...truncated';
+                await i.reply({
+                    content: '```\n' + (listText || 'no moves') + '```',
+                    flags: MessageFlags.Ephemeral,
+                });
+                return;
+            } else if (i.customId === 'pgn') {
+                await i.reply({
+                    content:
+                        '```' +
+                        pgn.slice(0, 1900) +
+                        (pgn.length > 1900 ? '\n...truncated' : '') +
+                        '```',
+                    flags: MessageFlags.Ephemeral,
+                });
+                return;
+            }
 
-				await i.deferUpdate();
+            const nextAttachment = (await drawBoardAtIndex(idx)).attachment;
+            const nextContainer = await buildGameContainer(idx);
+            await i.update({ components: [nextContainer], files: [nextAttachment] });
+        } catch (err) {
+            console.error('viewer collect err', err);
+            try {
+                await i.reply({
+                    content: 'error handling interaction',
+                    flags: MessageFlags.Ephemeral,
+                });
+            } catch {}
+        }
+    });
 
-				try {
-					const result = await analyzePosition(fens[idx], { searchTime: 3000 });
-					stockfishEvals.set(idx, result);
-					const next = await buildEmbedAtIndex(idx);
-					await i.editReply({ embeds: [next.embed], files: [next.attachment] });
-				} catch (error) {
-					log.error(`Stockfish evaluation error: ${error}`, error);
-					await i.followUp({
-						content: 'Failed to evaluate position',
-						flags: MessageFlags.Ephemeral,
-					});
-				}
-				return;
-			} else if (i.customId === 'movelist') {
-				let listText = '';
-				let moveNum = 1;
-				for (let mvIdx = 0; mvIdx < moves.length; mvIdx += 2) {
-					const whiteMove = moves[mvIdx];
-					listText += `${moveNum}. ${
-						whiteMove
-							? `${whiteMove.san}${whiteMove.glyph || ''}${
-									whiteMove.clean ? ` {${whiteMove.clean}}` : ''
-							  }`
-							: ''
-					}`;
-					const blackMove = moves[mvIdx + 1];
-					if (blackMove) {
-						listText += ` ${blackMove.san}${blackMove.glyph || ''}${
-							blackMove.clean ? ` {${blackMove.clean}}` : ''
-						}`;
-					}
-					listText += '\n';
-					moveNum++;
-				}
-				if (listText.length > 1900) listText = listText.slice(0, 1900) + '\n...truncated';
-				await i.reply({
-					content: '```\n' + (listText || 'no moves') + '```',
-					flags: MessageFlags.Ephemeral,
-				});
-				return;
-			} else if (i.customId === 'pgn') {
-				await i.reply({
-					content:
-						'```' +
-						pgn.slice(0, 1900) +
-						(pgn.length > 1900 ? '\n...truncated' : '') +
-						'```',
-					flags: MessageFlags.Ephemeral,
-				});
-				return;
-			}
-
-			const next = await buildEmbedAtIndex(idx);
-			await i.update({ embeds: [next.embed], files: [next.attachment] });
-		} catch (err) {
-			console.error('viewer collect err', err);
-			try {
-				await i.reply({
-					content: 'error handling interaction',
-					flags: MessageFlags.Ephemeral,
-				});
-			} catch {}
-		}
-	});
-
-	collector.on('end', async () => {
-		try {
-			await msg.edit({ components: [] });
-		} catch {}
-	});
+    collector.on('end', async () => {
+        try {
+            await msg.edit({ components: [] });
+        } catch {}
+    });
 }
