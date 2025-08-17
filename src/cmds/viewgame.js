@@ -1,17 +1,13 @@
 import {
 	SlashCommandBuilder,
 	AttachmentBuilder,
-	EmbedBuilder,
 	ActionRowBuilder,
 	ButtonBuilder,
 	ButtonStyle,
 	MessageFlags,
 	ContainerBuilder,
 	SectionBuilder,
-	TextDisplayBuilder,
-	SeparatorBuilder,
-	MediaGalleryItemBuilder,
-	MediaGalleryItem,
+	SeparatorBuilder
 } from 'discord.js';
 import { drawBoard } from '../utils/drawBoard.js';
 import { analyzePosition } from '../utils/stockfish/stockfish.js';
