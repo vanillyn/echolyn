@@ -8,9 +8,7 @@ import {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  MessageFlags,
-  StringSelectMenuBuilder,
-  StringSelectMenuOptionBuilder,
+  MessageFlags
 } from 'discord.js'
 import { GameManager } from '../utils/game/gameManager.js'
 import { drawBoard } from '../utils/drawBoard.js'
