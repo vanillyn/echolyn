@@ -2,7 +2,7 @@ import { handleOpeningButtons } from '../cmds/learn.js';
 import { handleAnalysisButtons } from '../cmds/analyze.js';
 import { handleStudyButtons } from '../cmds/profile/lichess/study.js';
 import { log } from '../init.js';
-import { MessageFlags } from 'discord.js';
+import { MessageFlags, TextDisplayBuilder } from 'discord.js';
 
 const LOG_NAME = 'interaction';
 
@@ -109,20 +109,21 @@ export default {
 			log.error(`${LOG_NAME}: error handling ${idInfo}\n${error?.stack || error?.message || error}`);
 
 			const errorMessage = `There was an internal error processing the interaction: ${idInfo}.\n\`\`\`\n${error}\n\`\`\`\n[[report](<https://github.com/vanillyn/echolyn/issues>) - [support](<https://discord.gg/3PkaESCxxW>)]`;
+			const errorText = new TextDisplayBuilder().setContent(errorMessage)
 			try {
 				if (interaction.replied || interaction.deferred) {
 					await interaction.editReply({
-						content: errorMessage,
-						flags: MessageFlags.Ephemeral,
+						components: errorText,
+						flags: MessageFlags.IsComponentsV2,
 					});
 				} else {
 					await interaction.reply({
-						content: errorMessage,
-						flags: MessageFlags.Ephemeral,
+						components: errorText,
+						flags: MessageFlags.IsComponentsV2,
 					});
 				}
 			} catch (replyError) {
-				log.error(`${LOG_NAME}: failed to send error message:`, replyError);
+				log.error(`${LOG_NAME}: failed to send error message:`, replyError?.stack || replyError?.message || replyError);
 			}
 		}
 	},

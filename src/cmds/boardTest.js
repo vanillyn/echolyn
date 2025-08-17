@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, MessageFlags, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder } from 'discord.js';
 import { Chess } from 'chessops/chess';
 import { parseFen, makeFen } from 'chessops/fen';
 import { drawBoard, getUserConfig } from '../utils/drawBoard';
@@ -30,36 +30,6 @@ export default {
 						value: 'rnbqkbnr/ppp1pppp/8/3p4/2PP4/8/PP2PPPP/RNBQKBNR b KQkq c3 0 2',
 					}
 				)
-		)
-		.addStringOption(option =>
-			option
-				.setName('light_color')
-				.setDescription('Light square color in hex (e.g., #E6E6E6). Default: #E6E6E6')
-				.setRequired(false)
-		)
-		.addStringOption(option =>
-			option
-				.setName('dark_color')
-				.setDescription('Dark square color in hex (e.g., #707070). Default: #707070')
-				.setRequired(false)
-		)
-		.addStringOption(option =>
-			option
-				.setName('border_color')
-				.setDescription('Border color in hex (e.g., #1E1E1E). Default: #1E1E1E')
-				.setRequired(false)
-		)
-		.addStringOption(option =>
-			option
-				.setName('check_color')
-				.setDescription('Check highlight color in hex (e.g., #FF0000). Default: #FF0000')
-				.setRequired(false)
-		)
-		.addStringOption(option =>
-			option
-				.setName('piece_set')
-				.setDescription('Piece set to use (e.g., pixel, alpha). Default: pixel')
-				.setRequired(false)
 		),
 
 	async execute(interaction) {
@@ -79,7 +49,7 @@ export default {
 		try {
 			const checkSquare = pos.isCheck() ? getKingSquare(pos, pos.turn) : null;
 			const currentConfig = await getUserConfig(interaction.user.id)
-			 const buffer = await drawBoard(fen, {...currentConfig, checkSquare}, interaction.user.id)
+			const buffer = await drawBoard(fen, {...currentConfig, checkSquare}, interaction.user.id)
 			
 			let statusText = '';
 			if (pos.isCheckmate()) {
@@ -93,16 +63,30 @@ export default {
 				statusText = '(Draw - Insufficient material)';
 			}
 
-			const embed = new EmbedBuilder()
-				.setTitle(`Chess Position ${statusText}`)
-				.setDescription(`Chess position from \`${fen}\``)
-				.setImage('attachment://chessboard.png')
-				.setColor('#e6e6e6');
+			const board = new ContainerBuilder()
+				.addTextDisplayComponents(
+					textDisplay => textDisplay
+						.setContent(`# Custom chess position ${statusText}`)
+				)
+				.addMediaGalleryComponents(
+					MediaGalleryBuilder => MediaGalleryBuilder
+						.addItems(
+							MediaGalleryItemBuilder => MediaGalleryItemBuilder
+								.setDescription(`Chess board showing the position: ${fen}`)
+								.setURL('attachment://chessboard.png')
+						)
+				)
+				.addTextDisplayComponents(
+					textDisplay => textDisplay
+						.setContent(`-# ${fen}`)
+				)
 				
 			await interaction.editReply({
-				embeds: [embed],
+				flags: MessageFlags.IsComponentsV2,
+				components: [board],
 				files: [{ attachment: buffer, name: 'chessboard.png' }],
 			});
+
 		} catch (error) {
 			console.error(error);
 			await interaction.editReply('An error occurred while rendering the chess board.');

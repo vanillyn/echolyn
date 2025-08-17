@@ -7,6 +7,7 @@ export class Analysis {
 	constructor() {
 		this.searchTime = 2000;
 		this.concurrency = 4;
+		this.moveColor = 'w';
 		this.annotations = {
 			BLUNDER: { symbol: '??', threshold: -200, description: 'Blunder' },
 			MISTAKE: { symbol: '?', threshold: -100, description: 'Mistake' },
@@ -29,7 +30,7 @@ export class Analysis {
 			const { fens, moves: sanMoves } = parsed;
 			const chess = new Chess();
 
-			const startMove = options.skipOpening !== false ? Math.min(6, Math.floor(fens.length / 4)) : 1;
+			const startMove = 1;
 			
 			const positionsToAnalyze = [];
 			for (let i = startMove; i < fens.length; i++) {
@@ -84,19 +85,19 @@ export class Analysis {
 				
 				try {
 					chess.load(result.beforeFen);
-					const moveColor = chess.turn() === 'w' ? 'white' : 'black';
+					this.moveColor = chess.turn() === 'w' ? 'white' : 'black';
 
 					const evaluation = this.evaluateMove(
 						beforeAnalysis,
 						afterAnalysis,
-						moveColor,
+						this.moveColor,
 						prevEval,
 						playedMove
 					);
 
 					analysis.moves.push({
 						move: move.san,
-						color: moveColor,
+						color: this.moveColor,
 						fen: result.afterFen,
 						evaluation: evaluation.eval,
 						bestMove: beforeAnalysis?.bestMove,
@@ -104,7 +105,7 @@ export class Analysis {
 						comment: evaluation.comment,
 					});
 
-					this.updateSummary(analysis.summary, evaluation.annotation, moveColor);
+					this.updateSummary(analysis.summary, evaluation.annotation, this.moveColor);
 					prevEval = evaluation.eval;
 				} catch (error) {
 					log.error(`${LOG_NAME}: Error evaluating move ${index}: ${error.message}`);
@@ -176,7 +177,7 @@ export class Analysis {
 			beforeAnalysis.mateIn,
 			color
 		);
-		const afterColor = moveColor === 'white' ? 'black' : 'white';
+		const afterColor = this.moveColor === 'white' ? 'black' : 'white';
 		const afterEval = this.normalizeEval(
 			afterAnalysis.eval,
 			afterAnalysis.mateIn,
@@ -196,7 +197,7 @@ export class Analysis {
 		}
 
 		const evalDiff = afterEval - beforeEval;
-		const playerDiff = (moveColor === 'white'? evalDiff : -evalDiff);
+		const playerDiff = (this.moveColor === 'white'? evalDiff : -evalDiff);
 
 		let annotation;
 		let comment;

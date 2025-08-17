@@ -6,6 +6,12 @@ import {
 	ActionRowBuilder,
 	AttachmentBuilder,
 	MessageFlags,
+	TextDisplayBuilder,
+	ContainerBuilder,
+	SectionBuilder,
+	MediaGalleryBuilder,
+	MediaGalleryItemBuilder,
+	SeparatorBuilder,
 } from 'discord.js';
 import { analysis } from '../utils/stockfish/analyze.js';
 import { extractLichessId, fetchLichessPgn } from '../utils/api/lichessApi.js';
@@ -14,6 +20,7 @@ import { gifRenderer } from '../utils/drawGIF.js';
 import { buildFensAndMetaFromPgn } from '../utils/parsePGN.js';
 import { drawBoard } from '../utils/drawBoard.js';
 import { log } from '../init.js';
+import config from '../../config.js';
 
 export default {
 	data: new SlashCommandBuilder()
@@ -26,7 +33,7 @@ export default {
 				.addStringOption(o =>
 					o.setName('url').setDescription('lichess or chess.com url').setRequired(false)
 				)
-				.addStringOption(o => 
+				.addStringOption(o =>
 					o.setName('pgn').setDescription('raw pgn text').setRequired(false)
 				)
 				.addAttachmentOption(o =>
@@ -72,7 +79,7 @@ function getAnnotationColor(symbol) {
 		'!': 'transparent',
 		'!!': '#0066cc',
 		'★': '#00aaff',
-		'': 'transparent'
+		'': 'transparent',
 	};
 	return colors[symbol] || 'transparent';
 }
@@ -90,36 +97,42 @@ async function handleGameAnalysis(interaction) {
 			const id = await extractLichessId(url);
 			if (!id) {
 				return interaction.editReply({
-					content: 'invalid lichess url',
-					flags: MessageFlags.Ephemeral,
+					components: new TextDisplayBuilder().setContent('invalid lichess url'),
+					flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
 				});
 			}
 			pgn = await fetchLichessPgn(id, false, false, true);
 			if (!pgn) {
 				return interaction.editReply({
-					content: 'failed to fetch lichess pgn or game is private',
-					flags: MessageFlags.Ephemeral,
+					components: new TextDisplayBuilder().setContent(
+						'failed to fetch lichess pgn or game is private'
+					),
+					flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
 				});
 			}
 		} else if (url.includes('chess.com')) {
 			const id = extractChessComId(url);
 			if (!id) {
 				return interaction.editReply({
-					content: 'invalid chess.com url',
-					flags: MessageFlags.Ephemeral,
+					components: new TextDisplayBuilder().setContent('invalid chess.com url'),
+					flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
 				});
 			}
 			pgn = await fetchChessComPgn(id);
 			if (!pgn) {
 				return interaction.editReply({
-					content: 'failed to fetch chess.com pgn',
-					flags: MessageFlags.Ephemeral,
+					components: new TextDisplayBuilder().setContent(
+						'failed to fetch chess.com pgn'
+					),
+					flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
 				});
 			}
 		} else {
 			return interaction.editReply({
-				content: 'unsupported url, provide lichess or chess.com url',
-				flags: MessageFlags.Ephemeral,
+				components: new TextDisplayBuilder().setContent(
+					'unsupported url, provide lichess or chess.com url'
+				),
+				flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
 			});
 		}
 	} else if (rawPgnText) {
@@ -127,8 +140,8 @@ async function handleGameAnalysis(interaction) {
 	} else if (attachment) {
 		if (!attachment.name.toLowerCase().endsWith('.pgn')) {
 			return interaction.editReply({
-				content: 'uploaded file must be a .pgn',
-				flags: MessageFlags.Ephemeral,
+				components: new TextDisplayBuilder().setContent('uploaded file must be a .pgn'),
+				flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
 			});
 		}
 		try {
@@ -136,12 +149,14 @@ async function handleGameAnalysis(interaction) {
 			pgn = await r.text();
 		} catch (e) {
 			return interaction.editReply({
-				content: 'failed to download uploaded file',
-				flags: MessageFlags.Ephemeral,
+				components: new TextDisplayBuilder().setContent('failed to download uploaded file'),
+				flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
 			});
 		}
 	} else {
-		await interaction.editReply({ content: 'Send the PGN for your game!' });
+		await interaction.editReply({
+			components: new TextDisplayBuilder().setContent('Send the PGN for your game!'),
+		});
 		const collector = interaction.channel.createMessageCollector({
 			filter: m => m.author.id === interaction.user.id,
 			max: 1,
@@ -157,8 +172,8 @@ async function handleGameAnalysis(interaction) {
 					resolve();
 				} else {
 					await interaction.editReply({
-						content: 'No PGN received.',
-						flags: MessageFlags.Ephemeral,
+						components: new TextDisplayBuilder().setContent('No PGN received.'),
+						flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
 					});
 					resolve();
 				}
@@ -167,8 +182,10 @@ async function handleGameAnalysis(interaction) {
 			collector.on('end', async collected => {
 				if (collected.size === 0) {
 					await interaction.editReply({
-						content: 'Timed out waiting for PGN.',
-						flags: MessageFlags.Ephemeral,
+						components: new TextDisplayBuilder().setContent(
+							'Timed out waiting for PGN.'
+						),
+						flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
 					});
 					resolve();
 				}
@@ -185,57 +202,26 @@ async function processGameAnalysis(interaction, pgn, createGif) {
 	const parsed = buildFensAndMetaFromPgn(pgn);
 	if (!parsed || !parsed.fens || parsed.fens.length === 0) {
 		return interaction.editReply({
-			content: 'could not parse pgn or no moves found',
-			flags: MessageFlags.Ephemeral,
+			components: [new TextDisplayBuilder().setContent(
+				'could not parse pgn or no moves found'
+			)],
+			flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
 		});
 	}
 
 	const { headers } = parsed;
-	const white = headers.White || headers.WhitePlayer || 'white';
-	const black = headers.Black || headers.BlackPlayer || 'black';
-
-	await interaction.editReply({ content: 'Analyzing game. This may take a while.' });
-
+	const white = headers.White || headers.WhitePlayer || config.default.white;
+	const black = headers.Black || headers.BlackPlayer || config.default.black;
+	const analyzing = new TextDisplayBuilder().setContent(
+		'<a:sillyrook:1406752466573332551> Analyzing game. This may take a while.'
+	);
+	const gifrendering = new TextDisplayBuilder().setContent(
+		'<a:sillyqueen:1406752464908189896> Rendering GIF. This will also take a while.'
+	);
+	await interaction.editReply({ components: [analyzing], flags: MessageFlags.IsComponentsV2 });
+   
 	try {
 		const analysisResult = await analysis.analyzeGame(pgn);
-
-		const embed = new EmbedBuilder()
-			.setTitle('Game Analysis Complete')
-			.setDescription(`Analysis of ${white} vs ${black}`)
-			.addFields(
-				{
-					name: 'Accuracy',
-					value: `White: ${analysisResult.accuracy.white}%\nBlack: ${analysisResult.accuracy.black}%`,
-					inline: true,
-				},
-				{
-					name: 'White Summary',
-					value: `${analysisResult.summary.brilliant.white}× Brilliant\n${analysisResult.summary.excellent.white}× Excellent\n${analysisResult.summary.good.white}× Good\n${analysisResult.summary.inaccuracies.white}× Inaccuracies\n${analysisResult.summary.mistakes.white}× Mistakes\n${analysisResult.summary.blunders.white}× Blunders`,
-					inline: true,
-				},
-				{
-					name: 'Black Summary',
-					value: `${analysisResult.summary.brilliant.black}× Brilliant\n${analysisResult.summary.excellent.black}× Excellent\n${analysisResult.summary.good.black}× Good\n${analysisResult.summary.inaccuracies.black}× Inaccuracies\n${analysisResult.summary.mistakes.black}× Mistakes\n${analysisResult.summary.blunders.black}× Blunders`,
-					inline: true,
-				}
-			)
-			.setColor('#4a90e2');
-
-		const keyMoves = analysisResult.moves.filter(move =>
-			['??', '★', '!!'].includes(move.annotation.symbol)
-		).slice(0, 3);
-
-		if (keyMoves.length > 0) {
-			const keyMovesText = keyMoves
-				.map(move => `**${move.move}${move.annotation.symbol}** - ${move.comment}`)
-				.join('\n');
-
-			embed.addFields({
-				name: 'Key Moments',
-				value: keyMovesText,
-				inline: false,
-			});
-		}
 
 		const detailsButton = new ButtonBuilder()
 			.setCustomId('analysis_details')
@@ -247,28 +233,81 @@ async function processGameAnalysis(interaction, pgn, createGif) {
 			.setLabel('View Game with Analysis')
 			.setStyle(ButtonStyle.Secondary);
 
-		const components = [
-			new ActionRowBuilder().addComponents(detailsButton, viewGameButton),
-		];
+		const container = new ContainerBuilder()
+			.addTextDisplayComponents(textDisplay =>
+				textDisplay.setContent(`# ${white} vs ${black}`)
+			)
+			.addSeparatorComponents(SeparatorBuilder => SeparatorBuilder.setDivider(true))
+			.addTextDisplayComponents(
+				textDisplay => textDisplay.setContent(`-# Info for ${white}`),
+				textDisplay =>
+					textDisplay.setContent(
+						`## Accuracy: ${analysisResult.accuracy.white}\n${analysisResult.summary.brilliant.white} <:brilliant:1406759056894595112>\n${analysisResult.summary.excellent.white} <:great:1406759119221817364>\n${analysisResult.summary.good.white} <:good:1406759117703352370>\n${analysisResult.summary.inaccuracies.white} <:inaccuracy:1406759022031405118>\n${analysisResult.summary.mistakes.white} <:mistake:1406758987893969026>\n${analysisResult.summary.blunders.white} <:blunder:1406758934961717288>`
+					)
+			)
+			.addTextDisplayComponents(
+				textDisplay => textDisplay.setContent(`-# Info for ${black}`),
+				textDisplay =>
+					textDisplay.setContent(
+						`## Accuracy: ${analysisResult.accuracy.black}\n${analysisResult.summary.brilliant.black} <:brilliant:1406759056894595112>\n${analysisResult.summary.excellent.black} <:great:1406759119221817364>\n${analysisResult.summary.good.black} <:good:1406759117703352370>\n${analysisResult.summary.inaccuracies.black} <:inaccuracy:1406759022031405118>\n${analysisResult.summary.mistakes.black} <:mistake:1406758987893969026>\n${analysisResult.summary.blunders.black} <:blunder:1406758934961717288>`
+					)
+			);
 
-		const response = { embeds: [embed], components };
+		const keyMoves = analysisResult.moves
+			.filter(move => ['??', '!', '!!'].includes(move.annotation.symbol))
+			.slice(0, 3);
+
+		if (keyMoves.length > 0) {
+			const keyMovesText = keyMoves
+				.map(
+					move =>
+						`Key Moments\n**${move.move}${move.annotation.symbol}** - ${move.comment}`
+				)
+				.join('\n');
+
+			const keyMoveField = new TextDisplayBuilder().setContent(keyMovesText);
+			container.addTextDisplayComponents(keyMoveField);
+		}
+
+		const response = { components: [container], flags: MessageFlags.IsComponentsV2 };
+
+		function addSubtext() {
+			container
+				.addActionRowComponents(ActionRowBuilder =>
+					ActionRowBuilder.addComponents(detailsButton, viewGameButton)
+				)
+				.addTextDisplayComponents(textDisplay =>
+					textDisplay.setContent('-# Analyzed by Stockfish 17.1 at Depth 12')
+				);
+		}
 
 		if (createGif) {
 			try {
-				await interaction.editReply({ content: 'Rendering GIF, this will also take a while.' });
+				await interaction.editReply({
+					components: [gifrendering],
+					flags: MessageFlags.IsComponentsV2,
+				});
 				const gifBuffer = await gifRenderer.createAnalysisGif(pgn, analysisResult, {
 					delay: 1500,
 					size: 400,
 					userId: interaction.user.id,
 					showEval: true,
-					highlightLastMove: true
+					highlightLastMove: true,
 				});
-
-				embed.setImage('attachment://game_analysis.gif');
+				container.addMediaGalleryComponents(MediaGalleryBuilder =>
+					MediaGalleryBuilder.addItems(MediaGalleryItemBuilder =>
+						MediaGalleryItemBuilder.setDescription('GIF of an analyzed game.').setURL(
+							'attachment://game_analysis.gif'
+						)
+					)
+				);
+				addSubtext();
 				response.files = [{ attachment: gifBuffer, name: 'game_analysis.gif' }];
 			} catch (error) {
-				log.error('Error creating analysis GIF:', error);
+				log.error('Error creating analysis GIF:', error?.stack || error?.message || error);
 			}
+		} else {
+			addSubtext();
 		}
 
 		await interaction.editReply(response);
@@ -280,8 +319,13 @@ async function processGameAnalysis(interaction, pgn, createGif) {
 			parsed: parsed,
 		});
 	} catch (error) {
-		log.error('Analysis error:', error);
-		await interaction.editReply('Error analyzing the game. Please check your PGN format.');
+		log.error(`Analysis error: ${error?.stack || error?.message || error}`);
+		await interaction.editReply({
+			components: [new TextDisplayBuilder().setContent(
+				'Error analyzing the game. Please check your PGN format.'
+			)],
+			flags: MessageFlags.IsComponentsV2,
+		});
 	}
 }
 
@@ -310,7 +354,9 @@ async function handlePositionAnalysis(interaction) {
 					value:
 						positionAnalysis.mateIn !== null
 							? `Mate in ${Math.abs(positionAnalysis.mateIn)}`
-							: `${positionAnalysis.eval > 0 ? '+' : ''}${positionAnalysis.eval.toFixed(2)}`,
+							: `${
+									positionAnalysis.eval > 0 ? '+' : ''
+							  }${positionAnalysis.eval.toFixed(2)}`,
 					inline: true,
 				}
 			)
@@ -327,8 +373,10 @@ export async function handleAnalysisButtons(interaction) {
 	const cache = interaction.client.analysisCache?.get(interaction.user.id);
 	if (!cache) {
 		return interaction.reply({
-			content: 'Analysis data expired. Please run the analysis again.',
-			flags: MessageFlags.Ephemeral,
+			components: new TextDisplayBuilder().setContent(
+				'Analysis data expired. Please run the analysis again.'
+			),
+			flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
 		});
 	}
 
@@ -339,7 +387,9 @@ export async function handleAnalysisButtons(interaction) {
 				const moveNumber = Math.floor(index / 2) + 1;
 				const isWhite = move.color === 'white';
 				const movePrefix = isWhite ? `${moveNumber}.` : `${moveNumber}...`;
-				return `${isWhite ? '⚪' : '⚫'} **${movePrefix} ${move.move}${move.annotation.symbol}** ${move.comment ? `- ${move.comment}` : ''}`;
+				return `${isWhite ? '⚪' : '⚫'} **${movePrefix} ${move.move}${
+					move.annotation.symbol
+				}** ${move.comment ? `- ${move.comment}` : ''}`;
 			})
 			.join('\n');
 
@@ -351,7 +401,10 @@ export async function handleAnalysisButtons(interaction) {
 				text: `Showing first 20 moves of ${cache.analysis.moves.length} total moves`,
 			});
 
-		await interaction.reply({ embeds: [detailEmbed], flags: MessageFlags.Ephemeral });
+		await interaction.reply({
+			embeds: [detailEmbed],
+			flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
+		});
 	} else if (interaction.customId === 'analysis_viewgame') {
 		await createGameViewer(interaction, cache);
 	}
@@ -388,7 +441,7 @@ async function createGameViewer(interaction, cache) {
 			checkSquare: m.checkSquare || null,
 			inCheck: Boolean(m.inCheck),
 			isCheckmate: Boolean(m.isCheckmate),
-			eval: idx === 0 ? 0.2 : (analysisData?.eval || m.eval || 0),
+			eval: idx === 0 ? 0.2 : analysisData?.eval || m.eval || 0,
 			clocks: m.clocks,
 			players: { white, black },
 			watermark: 'echolyn analysis',
@@ -403,15 +456,20 @@ async function createGameViewer(interaction, cache) {
 			if (lastMove && lastMove.from && lastMove.to) {
 				drawOptions.lastMove = {
 					from: lastMove.from,
-					to: lastMove.to
+					to: lastMove.to,
 				};
 			}
 
-			if (analysisData && analysisData.annotation.symbol && analysisData.annotation.symbol !== '!' && analysisData.annotation.symbol !== '') {
+			if (
+				analysisData &&
+				analysisData.annotation.symbol &&
+				analysisData.annotation.symbol !== '!' &&
+				analysisData.annotation.symbol !== ''
+			) {
 				if (lastMove && lastMove.to) {
 					drawOptions.annotatedMove = {
 						square: lastMove.to,
-						color: getAnnotationColor(analysisData.annotation.symbol)
+						color: getAnnotationColor(analysisData.annotation.symbol),
 					};
 					drawOptions.annotation = analysisData.annotation.symbol;
 				}
@@ -475,7 +533,7 @@ async function createGameViewer(interaction, cache) {
 		embeds: [initial.embed],
 		files: [initial.attachment],
 		components: [row, row2],
-		flags: MessageFlags.Ephemeral,
+		flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
 	});
 
 	const collector = msg.createMessageComponentCollector({ time: 10 * 60 * 1000 });
@@ -484,8 +542,10 @@ async function createGameViewer(interaction, cache) {
 		try {
 			if (i.user.id !== interaction.user.id) {
 				return i.reply({
-					content: 'only the command user can control this viewer',
-					flags: MessageFlags.Ephemeral,
+					components: new TextDisplayBuilder().setContent(
+						'Only the command user can control this viewer.'
+					),
+					flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
 				});
 			}
 

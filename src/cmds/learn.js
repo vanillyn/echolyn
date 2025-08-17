@@ -1,168 +1,197 @@
-import { SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, MessageFlags } from 'discord.js';
+import {
+	SlashCommandBuilder,
+	EmbedBuilder,
+	ButtonBuilder,
+	ButtonStyle,
+	ActionRowBuilder,
+	MessageFlags,
+	ContainerBuilder,
+	SeparatorBuilder,
+	MediaGalleryBuilder,
+	MediaGalleryItemBuilder,
+	SectionBuilder,
+} from 'discord.js';
 import { gifRenderer } from '../utils/drawGIF.js';
 import { openingsDatabase, searchOpenings } from '../utils/game/openings.js';
 import { log } from '../init.js';
 import { getUserConfig } from '../utils/drawBoard.js';
+import { setupEquals } from 'chessops/setup';
 
 export default {
-  data: new SlashCommandBuilder()
-    .setName('learn')
-    .setDescription('learn about chess!')
-    .addSubcommand(subcommand =>
-      subcommand
-        .setName('opening')
-        .setDescription('show a guide for a chess opening')
-        .addStringOption(option =>
-          option
-            .setName('opening')
-            .setDescription('the opening to display')
-            .setRequired(true)
-            .addChoices(
-              { name: 'Italian Game', value: 'italian-game' },
-              { name: "Queen's Gambit", value: 'queens-gambit' },
-              { name: 'Ruy López', value: 'ruy-lopez' },
-              { name: 'Sicilian Defense', value: 'sicilian-defense' }
-            )
-        )
-        .addIntegerOption(option =>
-          option
-            .setName('delay')
-            .setDescription('set the delay between moves')
-              .setRequired(false)
-        )
-    )
-    .addSubcommand(subcommand =>
-      subcommand
-        .setName('search')
-        .setDescription('Search for chess openings')
-        .addStringOption(option =>
-          option
-            .setName('query')
-            .setDescription('Search term for openings')
-            .setRequired(true)
-        )
-    ),
+	data: new SlashCommandBuilder()
+		.setName('learn')
+		.setDescription('learn about chess!')
+		.addSubcommand(subcommand =>
+			subcommand
+				.setName('opening')
+				.setDescription('show a guide for a chess opening')
+				.addStringOption(option =>
+					option
+						.setName('opening')
+						.setDescription('the opening to display')
+						.setRequired(true)
+						.addChoices(
+							{ name: 'Italian Game', value: 'italian-game' },
+							{ name: "Queen's Gambit", value: 'queens-gambit' },
+							{ name: 'Ruy López', value: 'ruy-lopez' },
+							{ name: 'Sicilian Defense', value: 'sicilian-defense' }
+						)
+				)
+				.addIntegerOption(option =>
+					option
+						.setName('delay')
+						.setDescription('set the delay between moves')
+						.setRequired(false)
+				)
+		)
+		.addSubcommand(subcommand =>
+			subcommand
+				.setName('search')
+				.setDescription('Search for chess openings')
+				.addStringOption(option =>
+					option
+						.setName('query')
+						.setDescription('Search term for openings')
+						.setRequired(true)
+				)
+		),
 
-  async execute(interaction) {
-    await interaction.deferReply();
+	async execute(interaction) {
+		await interaction.deferReply();
 
-    const subcommand = interaction.options.getSubcommand();
+		const subcommand = interaction.options.getSubcommand();
 
-    if (subcommand === 'opening') {
-      const openingKey = interaction.options.getString('opening');
-      const opening = openingsDatabase[openingKey];
+		if (subcommand === 'opening') {
+			const openingKey = interaction.options.getString('opening');
+			const opening = openingsDatabase[openingKey];
 
-      if (!opening) {
-        return interaction.editReply('Opening not found!');
-      }
+			if (!opening) {
+				return interaction.editReply('Opening not found!');
+			}
 
-      try {
-        const gifBuffer = await gifRenderer.createOpeningGif(opening.moves, undefined, {
-          delay: interaction.options.getInteger('delay') ?? 1000,
-          boardOptions: {
-            size: 400,
-            showCoordinates: true,
-            ...await getUserConfig(interaction.user.id)
-          }
-        });
+			try {
+				const gifBuffer = await gifRenderer.createOpeningGif(opening.moves, undefined, {
+					delay: interaction.options.getInteger('delay') ?? 1000,
+					boardOptions: {
+						size: 400,
+						showCoordinates: true,
+						...(await getUserConfig(interaction.user.id)),
+					},
+				});
+				const historyButton = new ButtonBuilder()
+					.setCustomId(`opening_history_${openingKey}`)
+					.setLabel('History & Notable Players')
+					.setStyle(ButtonStyle.Primary);
 
-        const embed = new EmbedBuilder()
-          .setTitle(`${opening.name} (${opening.eco})`)
-          .setDescription(opening.description)
-          .addFields(
-            { name: 'Explanation', value: opening.explanation, inline: false },
-            { name: 'Key Moves', value: opening.moves.join(' '), inline: true },
-            { name: 'ECO Code', value: opening.eco, inline: true }
-          )
-          .setImage('attachment://opening.gif')
-          .setColor('#f0d9b5');
+				const variationsButton = new ButtonBuilder()
+					.setCustomId(`opening_variations_${openingKey}`)
+					.setLabel('Variations')
+					.setStyle(ButtonStyle.Secondary);
 
-        const historyButton = new ButtonBuilder()
-          .setCustomId(`opening_history_${openingKey}`)
-          .setLabel('History & Notable Players')
-          .setStyle(ButtonStyle.Primary);
+				const row = new ActionRowBuilder().addComponents(historyButton, variationsButton);
 
-        const variationsButton = new ButtonBuilder()
-          .setCustomId(`opening_variations_${openingKey}`)
-          .setLabel('Variations')
-          .setStyle(ButtonStyle.Secondary);
+				const container = new ContainerBuilder()
+					.addTextDisplayComponents(
+						textDisplay => textDisplay.setContent(`# ${opening.name} (${opening.eco})`),
+						textDisplay => textDisplay.setContent(`${opening.description}`)
+					)
+					.addTextDisplayComponents(
+						textDisplay => textDisplay.setContent('### Explanation'),
+						textDisplay => textDisplay.setContent(`${opening.explanation}`)
+					)
+					.addSeparatorComponents(SeparatorBuilder => SeparatorBuilder.setDivider(true))
+					.addActionRowComponents(row)
+					.addMediaGalleryComponents(MediaGalleryBuilder =>
+						MediaGalleryBuilder.addItems(MediaGalleryItemBuilder =>
+							MediaGalleryItemBuilder.setDescription(
+								`A gif showing the ${opening.name} in chess`
+							).setURL('attachment://opening.gif')
+						)
+					)
+					.addTextDisplayComponents(textDisplay =>
+						textDisplay.setContent(`-# ${opening.moves.join(' ')}`)
+					);
 
-        const row = new ActionRowBuilder().addComponents(historyButton, variationsButton);
+				await interaction.editReply({
+					files: [{ attachment: gifBuffer, name: 'opening.gif' }],
+					components: [container],
+					flags: MessageFlags.IsComponentsV2,
+				});
+			} catch (error) {
+				log.error('Error creating opening guide:', error?.stack || error?.message || error);
+				await interaction.editReply(
+					`Error creating opening guide.\n\`\`\`ansi\n${error.message}\n\`\`\``
+				);
+			}
+		}
 
-        await interaction.editReply({
-          embeds: [embed],
-          files: [{ attachment: gifBuffer, name: 'opening.gif' }],
-          components: [row]
-        });
-      } catch (error) {
-        log.error('Error creating opening guide:', error);
-        await interaction.editReply('Error creating opening guide. Please try again.');
-      }
-    }
+		if (subcommand === 'search') {
+			const query = interaction.options.getString('query');
+			const results = searchOpenings(query);
 
-    if (subcommand === 'search') {
-      const query = interaction.options.getString('query');
-      const results = searchOpenings(query);
+			if (results.length === 0) {
+				return interaction.editReply('No openings found matching your search.');
+			}
 
-      if (results.length === 0) {
-        return interaction.editReply('No openings found matching your search.');
-      }
+			const embed = new EmbedBuilder()
+				.setTitle(`Opening Search: "${query}"`)
+				.setColor('#b58863');
 
-      const embed = new EmbedBuilder()
-        .setTitle(`Opening Search: "${query}"`)
-        .setColor('#b58863');
+			const fields = results.slice(0, 5).map(opening => ({
+				name: `${opening.name} (${opening.eco})`,
+				value: `${opening.description}\n**Moves:** ${opening.moves.join(' ')}`,
+				inline: false,
+			}));
 
-      const fields = results.slice(0, 5).map(opening => ({
-        name: `${opening.name} (${opening.eco})`,
-        value: `${opening.description}\n**Moves:** ${opening.moves.join(' ')}`,
-        inline: false
-      }));
+			embed.addFields(fields);
 
-      embed.addFields(fields);
+			if (results.length > 5) {
+				embed.setFooter({ text: `Showing 5 of ${results.length} results` });
+			}
 
-      if (results.length > 5) {
-        embed.setFooter({ text: `Showing 5 of ${results.length} results` });
-      }
-
-      await interaction.editReply({ embeds: [embed] });
-    }
-  }
+			await interaction.editReply({ embeds: [embed] });
+		}
+	},
 };
 
 export async function handleOpeningButtons(interaction) {
-  const [action, type, openingKey] = interaction.customId.split('_');
-  
-  if (action !== 'opening') return;
+	const [action, type, openingKey] = interaction.customId.split('_');
 
-  const opening = openingsDatabase[openingKey];
-  if (!opening) return;
+	if (action !== 'opening') return;
 
-  if (type === 'history') {
-    const historyEmbed = new EmbedBuilder()
-      .setTitle(`${opening.name} - History`)
-      .setDescription(`**Origin:** ${opening.history.origin}`)
-      .addFields(
-        { name: 'First Recorded', value: opening.history.first_recorded, inline: true },
-        { name: 'Notable Players', value: opening.history.notable_players.join(', '), inline: false }
-      )
-      .setColor('#8b7355');
+	const opening = openingsDatabase[openingKey];
+	if (!opening) return;
 
-    await interaction.reply({ embeds: [historyEmbed], flags: MessageFlags.Ephemeral });
-  }
+	if (type === 'history') {
+		const historyEmbed = new EmbedBuilder()
+			.setTitle(`${opening.name} - History`)
+			.setDescription(`**Origin:** ${opening.history.origin}`)
+			.addFields(
+				{ name: 'First Recorded', value: opening.history.first_recorded, inline: true },
+				{
+					name: 'Notable Players',
+					value: opening.history.notable_players.join(', '),
+					inline: false,
+				}
+			)
+			.setColor('#8b7355');
 
-  if (type === 'variations') {
-    const variationsEmbed = new EmbedBuilder()
-      .setTitle(`${opening.name} - Variations`)
-      .setColor('#8b7355');
+		await interaction.reply({ embeds: [historyEmbed], flags: MessageFlags.Ephemeral });
+	}
 
-    const variationFields = opening.variations.map(variation => ({
-      name: variation.name,
-      value: `${variation.description}\n**Moves:** ${variation.moves.join(' ')}`,
-      inline: false
-    }));
+	if (type === 'variations') {
+		const variationsEmbed = new EmbedBuilder()
+			.setTitle(`${opening.name} - Variations`)
+			.setColor('#8b7355');
 
-    variationsEmbed.addFields(variationFields);
+		const variationFields = opening.variations.map(variation => ({
+			name: variation.name,
+			value: `${variation.description}\n**Moves:** ${variation.moves.join(' ')}`,
+			inline: false,
+		}));
 
-    await interaction.reply({ embeds: [variationsEmbed], flags: MessageFlags.Ephemeral });
-  }
+		variationsEmbed.addFields(variationFields);
+
+		await interaction.reply({ embeds: [variationsEmbed], flags: MessageFlags.Ephemeral });
+	}
 }
