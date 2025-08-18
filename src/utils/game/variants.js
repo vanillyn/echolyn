@@ -8,14 +8,14 @@ import { makeSan, parseSan } from 'chessops/san';
 import { analyzePosition } from '../stockfish/stockfish.js';
 
 export const VARIANTS = {
-  standard: 'Standard Chess',
-  antichess: 'Antichess (King of the Hill)',
-  horde: 'Horde Chess',
-  atomic: 'Atomic Chess',
-  realtime: 'Real-time Chaos Chess',
+  standard: 'Standard',
+  antichess: 'Antichess',
+  horde: 'Horde',
+  atomic: 'Atomic',
+  realtime: 'Real-Time',
   servervs: 'Server vs Player',
-  correspondence: 'Correspondence Chess',
-  blitz: 'Speed Chess with Reactions'
+  correspondence: 'Correspondence',
+  blitz: 'Blitz'
 }
 
 export class VariantChess {
@@ -622,19 +622,19 @@ export class VariantGame {
   getVariantDescription() {
     switch (this.variant) {
       case 'antichess':
-        return 'Capture moves are mandatory. First to lose all pieces wins!'
+        return 'Capture moves are mandatory. First to lose all pieces or stalemate wins.'
       case 'horde':
-        return 'White: only pawns vs Black: normal pieces. White wins by checkmate, Black by capturing all pawns.'
+        return 'White has 36 pawns. White wins by checkmating the Black king, and Black wins by capturing all pawns.'
       case 'atomic':
-        return 'Captures cause explosions! Adjacent pieces destroyed (except pawns).'
+        return 'Captures cause explosions. Adjacent pieces destroyed (except pawns).'
       case 'realtime':
-        return 'Both players move simultaneously! 3-second windows, conflicts resolved by timestamp.'
+        return 'Both players move simultaneously.'
       case 'servervs':
-        return 'The server votes on moves against one player. Democracy vs skill!'
+        return 'The server votes on moves against one player (or engine).'
       case 'correspondence':
-        return 'Slow chess via DMs. 24 hours per move.'
+        return 'Long-term game.'
       case 'blitz':
-        return 'React ⚡ for instant moves, 🤔 for 3-second delay!'
+        return 'Press buttons to make the game move faster.'
       default:
         return 'Standard chess rules.'
     }
