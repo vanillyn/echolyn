@@ -1,3 +1,4 @@
+import { client } from '../../../index.js'
 import { VariantGame } from './variants.js'
 
 const games = new Map()
@@ -29,7 +30,7 @@ export const GameManager = {
         name: `chess-discussion-${game.id.slice(-6)}`,
         type: 0,
         parent: category?.id,
-        topic: `Discuss moves for the server vs ${game.getPlayerName(0)} chess game`,
+        topic: `Discuss moves for the server vs ${await game.getPlayerName(0, client)} chess game`,
         rateLimitPerUser: 3
       })
       

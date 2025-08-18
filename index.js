@@ -5,7 +5,7 @@ import { initClient, log } from './src/init.js'
 import { authServer } from './src/utils/authServer.js'
 const contributers = contributors.map(a => a.name).join(", ")
 log.info(`${config.name} | ${version} - ${contributers}`)
-const client = new Client({
+export const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 })
 
