@@ -19,6 +19,7 @@ import { GameManager } from '../utils/game/gameManager.js';
 import { drawBoard } from '../utils/drawBoard.js';
 import { VARIANTS } from '../utils/game/variants.js';
 import { client } from '../../index.js';
+import { log } from '../init.js';
 
 export default {
 	data: new SlashCommandBuilder()
@@ -754,6 +755,7 @@ export default {
 		const moveResult = await game.makeMove(moveInput, modalSubmit.user.id, options);
 
 		if (!moveResult) {
+			log.error(`log.temp: Invalid move ${moveInput} in ${game.id}, returned ${moveResult}. `)
 			return modalSubmit.reply({
 				content: 'Invalid move! Try again.',
 				flags: MessageFlags.Ephemeral,
