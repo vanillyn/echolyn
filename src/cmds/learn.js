@@ -1,21 +1,19 @@
 import {
 	SlashCommandBuilder,
 	EmbedBuilder,
+	StringSelectMenuBuilder,
+	StringSelectMenuOptionBuilder,
 	ButtonBuilder,
 	ButtonStyle,
 	ActionRowBuilder,
 	MessageFlags,
 	ContainerBuilder,
-	SeparatorBuilder,
-	MediaGalleryBuilder,
-	MediaGalleryItemBuilder,
-	SectionBuilder,
+	TextDisplayBuilder,
 } from 'discord.js';
 import { gifRenderer } from '../utils/drawGIF.js';
 import { openingsDatabase, searchOpenings } from '../utils/game/openings.js';
 import { log } from '../init.js';
 import { getUserConfig } from '../utils/drawBoard.js';
-import { setupEquals } from 'chessops/setup';
 
 export default {
 	data: new SlashCommandBuilder()
@@ -31,10 +29,29 @@ export default {
 						.setDescription('the opening to display')
 						.setRequired(true)
 						.addChoices(
-							{ name: 'Italian Game', value: 'italian-game' },
-							{ name: "Queen's Gambit", value: 'queens-gambit' },
-							{ name: 'Ruy López', value: 'ruy-lopez' },
-							{ name: 'Sicilian Defense', value: 'sicilian-defense' }
+							{ name: "King's Pawn Game", value: 'e4' },
+							{ name: "Queen's Pawn Game", value: 'd4' },
+							{ name: 'English Opening', value: 'c4' },
+							{ name: 'Zukertort Opening', value: 'Nf3' },
+							{ name: 'Bird Opening', value: 'f4' },
+							{ name: "King's Pawn Game", value: 'e4 e5' },
+							{ name: 'Sicilian Defense', value: 'e4 c5' },
+							{ name: 'French Defense', value: 'e4 e6' },
+							{ name: 'Caro-Kann Defense', value: 'e4 c6' },
+							{ name: "Queen's Pawn Game", value: 'd4 d5' },
+							{ name: 'Indian Defense', value: 'd4 Nf6' },
+							{ name: "King's Knight Opening", value: 'e4 e5 Nf3' },
+							{ name: "King's Knight Opening: Normal Variation", value: 'e4 e5 Nf3 Nc6' },
+							{ name: 'Ruy Lopez', value: 'e4 e5 Nf3 Nc6 Bb5' },
+							{ name: 'Italian Game', value: 'e4 e5 Nf3 Nc6 Bc4' },
+							{ name: "Queen's Gambit", value: 'd4 d5 c4' },
+							{ name: 'Slav Defense', value: 'd4 d5 c4 c6' },
+							{ name: 'Indian Defense: Normal Variation', value: 'd4 Nf6 c4 e6' },
+							{ name: 'Indian Defense: West Indian Defense', value: 'd4 Nf6 c4 g6' },
+							{ name: "King's Indian Defense", value: 'd4 Nf6 c4 g6 Nc3 Bg7' },
+							{ name: "King's Gambit", value: 'e4 e5 f4' },
+							{ name: 'English Opening: Symmetrical Variation', value: 'c4 c5' },
+							{ name: 'Dutch Defense', value: 'd4 f5' }
 						)
 				)
 				.addIntegerOption(option =>
@@ -78,39 +95,8 @@ export default {
 						...(await getUserConfig(interaction.user.id)),
 					},
 				});
-				const historyButton = new ButtonBuilder()
-					.setCustomId(`opening_history_${openingKey}`)
-					.setLabel('History & Notable Players')
-					.setStyle(ButtonStyle.Primary);
 
-				const variationsButton = new ButtonBuilder()
-					.setCustomId(`opening_variations_${openingKey}`)
-					.setLabel('Variations')
-					.setStyle(ButtonStyle.Secondary);
-
-				const row = new ActionRowBuilder().addComponents(historyButton, variationsButton);
-
-				const container = new ContainerBuilder()
-					.addTextDisplayComponents(
-						textDisplay => textDisplay.setContent(`# ${opening.name} (${opening.eco})`),
-						textDisplay => textDisplay.setContent(`${opening.description}`)
-					)
-					.addTextDisplayComponents(
-						textDisplay => textDisplay.setContent('### Explanation'),
-						textDisplay => textDisplay.setContent(`${opening.explanation}`)
-					)
-					.addSeparatorComponents(SeparatorBuilder => SeparatorBuilder.setDivider(true))
-					.addActionRowComponents(row)
-					.addMediaGalleryComponents(MediaGalleryBuilder =>
-						MediaGalleryBuilder.addItems(MediaGalleryItemBuilder =>
-							MediaGalleryItemBuilder.setDescription(
-								`A gif showing the ${opening.name} in chess`
-							).setURL('attachment://opening.gif')
-						)
-					)
-					.addTextDisplayComponents(textDisplay =>
-						textDisplay.setContent(`-# ${opening.moves.join(' ')}`)
-					);
+				const container = await buildOpeningContainer(openingKey, opening, gifBuffer);
 
 				await interaction.editReply({
 					files: [{ attachment: gifBuffer, name: 'opening.gif' }],
@@ -154,44 +140,162 @@ export default {
 	},
 };
 
-export async function handleOpeningButtons(interaction) {
-	const [action, type, openingKey] = interaction.customId.split('_');
+async function buildOpeningContainer(openingKey, opening, gifBuffer) {
+	const selectMenu = new StringSelectMenuBuilder()
+		.setCustomId(`opening_variations_${openingKey}`)
+		.setPlaceholder('Select a variation')
+		.addOptions(
+			opening.variations
+				.map(key => {
+					const variation = openingsDatabase[key];
+					if (!variation) return null;
+					return new StringSelectMenuOptionBuilder()
+						.setLabel(variation.name)
+						.setDescription(variation.moves.join(' '))
+						.setValue(key);
+				})
+				.filter(Boolean)
+		);
 
+	const container = new ContainerBuilder()
+		.addTextDisplayComponents(
+			textDisplay => textDisplay.setContent(`# ${opening.name} (${opening.eco})`),
+			textDisplay => textDisplay.setContent(`${opening.description}`)
+		)
+		.addSeparatorComponents(SeparatorBuilder => SeparatorBuilder.setDivider(true))
+		.addMediaGalleryComponents(MediaGalleryBuilder =>
+			MediaGalleryBuilder.addItems(MediaGalleryItemBuilder =>
+				MediaGalleryItemBuilder.setDescription(
+					`A gif showing the ${opening.name} in chess`
+				).setURL('attachment://opening.gif')
+			)
+		)
+		.addTextDisplayComponents(textDisplay =>
+			textDisplay.setContent(`-# ${opening.moves.join(' ')}`)
+		);
+
+	if (opening.variations.length > 0) {
+		const row = new ActionRowBuilder().addComponents(selectMenu);
+		container.addActionRowComponents(row);
+	}
+
+	return container;
+}
+
+export async function handleOpeningButtons(interaction) {
+	interaction.deferUpdate();
+
+	const [action, type, openingKey] = interaction.customId.split('_');
 	if (action !== 'opening') return;
 
 	const opening = openingsDatabase[openingKey];
 	if (!opening) return;
 
-	if (type === 'history') {
-		const historyEmbed = new EmbedBuilder()
-			.setTitle(`${opening.name} - History`)
-			.setDescription(`**Origin:** ${opening.history.origin}`)
-			.addFields(
-				{ name: 'First Recorded', value: opening.history.first_recorded, inline: true },
-				{
-					name: 'Notable Players',
-					value: opening.history.notable_players.join(', '),
-					inline: false,
-				}
-			)
-			.setColor('#8b7355');
-
-		await interaction.reply({ embeds: [historyEmbed], flags: MessageFlags.Ephemeral });
-	}
-
 	if (type === 'variations') {
-		const variationsEmbed = new EmbedBuilder()
-			.setTitle(`${opening.name} - Variations`)
-			.setColor('#8b7355');
+		const selectedVariationKey = interaction.values[0];
+		const variation = openingsDatabase[selectedVariationKey];
 
-		const variationFields = opening.variations.map(variation => ({
-			name: variation.name,
-			value: `${variation.description}\n**Moves:** ${variation.moves.join(' ')}`,
-			inline: false,
-		}));
+		if (!variation) {
+			return interaction.reply({
+				content: 'Variation not found!',
+				flags: MessageFlags.Ephemeral,
+			});
+		}
 
-		variationsEmbed.addFields(variationFields);
+		try {
+			const gifBuffer = await gifRenderer.createOpeningGif(variation.moves, undefined, {
+				delay: 1000,
+				boardOptions: {
+					size: 400,
+					showCoordinates: true,
+					...(await getUserConfig(interaction.user.id)),
+				},
+			});
 
-		await interaction.reply({ embeds: [variationsEmbed], flags: MessageFlags.Ephemeral });
+			const backButton = new ButtonBuilder()
+				.setCustomId(`opening_back_${openingKey}`)
+				.setLabel('Back to Main Opening')
+				.setStyle(ButtonStyle.Secondary);
+
+			const container = new ContainerBuilder()
+				.addTextDisplayComponents(
+					textDisplay => textDisplay.setContent(`# ${variation.name} (${variation.eco})`),
+					textDisplay => textDisplay.setContent(`${variation.description}`)
+				)
+				.addSeparatorComponents(SeparatorBuilder => SeparatorBuilder.setDivider(true))
+				.addMediaGalleryComponents(MediaGalleryBuilder =>
+					MediaGalleryBuilder.addItems(MediaGalleryItemBuilder =>
+						MediaGalleryItemBuilder.setDescription(
+							`A gif showing the ${variation.name} in chess`
+						).setURL('attachment://opening.gif')
+					)
+				)
+				.addTextDisplayComponents(textDisplay =>
+					textDisplay.setContent(`-# ${variation.moves.join(' ')}`)
+				);
+
+			if (opening.variations.length > 0) {
+				const selectMenu = new StringSelectMenuBuilder()
+					.setCustomId(`opening_variations_${openingKey}`)
+					.setPlaceholder('Variations of this move')
+					.addOptions(
+						opening.variations
+							.map(key => {
+								const v = openingsDatabase[key];
+								if (!v) return null;
+								return new StringSelectMenuOptionBuilder()
+									.setLabel(v.name)
+									.setDescription(v.moves.join(' '))
+									.setValue(key)
+									.setDefault(key === selectedVariationKey);
+							})
+							.filter(Boolean)
+					);
+
+				const row = new ActionRowBuilder().addComponents(selectMenu);
+				const backRow = new ActionRowBuilder().addComponents(backButton);
+				container.addActionRowComponents(row, backRow);
+			} else {
+				const backRow = new ActionRowBuilder().addComponents(backButton);
+				container.addActionRowComponents(backRow);
+			}
+
+			await interaction.editReply({
+				files: [{ attachment: gifBuffer, name: 'opening.gif' }],
+				components: [container],
+				flags: MessageFlags.IsComponentsV2,
+			});
+		} catch (error) {
+			log.error('/learn: error creating variation guide:', error?.stack || error?.message || error);
+			await interaction.editReply({
+				components: [new TextDisplayBuilder().setContent(`/learn: error creating variation guide.\n\`\`\`ansi\n${error.message}\n\`\`\``)],
+				flags: MessageFlags.IsComponentsV2,
+			});
+		}
+	} else if (type === 'back') {
+		try {
+			const gifBuffer = await gifRenderer.createOpeningGif(opening.moves, undefined, {
+				delay: 1000,
+				boardOptions: {
+					size: 400,
+					showCoordinates: true,
+					...(await getUserConfig(interaction.user.id)),
+				},
+			});
+
+			const container = await buildOpeningContainer(openingKey, opening, gifBuffer);
+
+			await interaction.editReply({
+				files: [{ attachment: gifBuffer, name: 'opening.gif' }],
+				components: [container],
+				flags: MessageFlags.IsComponentsV2,
+			});
+		} catch (error) {
+			log.error('/learn: error returning to main opening:', error?.stack || error?.message || error);
+			await interaction.reply({
+				content: `/learn: error returning to main opening.\n\`\`\`ansi\n${error.message}\n\`\`\``,
+				flags: MessageFlags.Ephemeral,
+			});
+		}
 	}
 }
