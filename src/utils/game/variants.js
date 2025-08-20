@@ -22,6 +22,7 @@ export class VariantChess {
   constructor(variant = 'standard', options = {}) {
     this.variant = variant
     this.options = options
+    this.pos = Chess.default()
     this.initVariant()
   }
 

@@ -23,7 +23,7 @@ const DEFAULT_CONFIG = {
 	checkColor: 'rgba(255, 0, 0, 0.4)',
 	lastMoveColor: 'rgba(255, 255, 0, 0.6)',
 	highlightColor: 'rgba(100, 200, 100, 0.6)',
-	pieceSet: 'cburnett',
+	pieceSet: 'rhosgfx',
 	showCoordinates: true,
 	coordinatePosition: 'inside',
 	borderRadius: 8,

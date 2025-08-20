@@ -1,4 +1,4 @@
-import { handleOpeningButtons } from '../cmds/learn.js';
+import { handleGlossarySelect, handleOpeningButtons } from '../cmds/learn.js';
 import { handleAnalysisButtons } from '../cmds/analyze.js';
 import { handleStudyButtons } from '../cmds/profile/lichess/study.js';
 import { log } from '../init.js';
@@ -81,7 +81,11 @@ export default {
 					await handleOpeningButtons(interaction);
 					return;
 				}
-
+				
+				if (customId.startsWith('glossary_')) {
+					await handleGlossarySelect(interaction);
+					return;
+				}
 				// cmds/analyze.js
 				if (customId.startsWith('analysis_')) {
 					await handleAnalysisButtons(interaction);
